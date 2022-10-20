@@ -16,6 +16,9 @@ __contact__ = "https://github.com/bzhxx"
 __license__ = "GPLv3"
 
 */
+#include "build/config.h"
+#ifdef ENABLE_EMULATOR_MD
+
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
@@ -692,3 +695,4 @@ void gwenesis_bus_load_state() {
     tmss_state = saveGwenesisStateGet(state, "tmss_state");
     tmss_count = saveGwenesisStateGet(state, "tmss_count");
 }
+#endif

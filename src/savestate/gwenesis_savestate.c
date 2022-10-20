@@ -17,6 +17,9 @@ __license__ = "GPLv3"
 
 */
 
+#include "build/config.h"
+#ifdef ENABLE_EMULATOR_MD
+
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -57,3 +60,4 @@ void gwenesis_load_state() {
   gwenesis_sn76489_load_state();
 
 }
+#endif

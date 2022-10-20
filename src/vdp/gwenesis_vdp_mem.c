@@ -16,6 +16,8 @@ __contact__ = "https://github.com/bzhxx"
 __license__ = "GPLv3"
 
 */
+#include "build/config.h"
+#ifdef ENABLE_EMULATOR_MD
 
 #include <stdint.h>
 #include <stdio.h>
@@ -1031,3 +1033,4 @@ void gwenesis_vdp_mem_load_state() {
   hvcounter_latched = saveGwenesisStateGet(state, "hvcounter_latched");
   hint_pending = saveGwenesisStateGet(state, "hint_pending");
 }
+#endif

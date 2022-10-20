@@ -16,6 +16,9 @@ __contact__ = "https://github.com/bzhxx"
 __license__ = "GPLv3"
 
 */
+#include "build/config.h"
+#ifdef ENABLE_EMULATOR_MD
+
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
@@ -1312,3 +1315,4 @@ void gwenesis_vdp_gfx_load_state() {
     Window_lastcol = saveGwenesisStateGet(state, "Window_lastcol");
     */
 }
+#endif

@@ -22,6 +22,8 @@
     07/08/04  bzhxx few simplication for gwenesis to fit on MCU
 */
 
+#include "build/config.h"
+#ifdef ENABLE_EMULATOR_MD
 
 #include <string.h>
 #include <stdlib.h>
@@ -266,3 +268,4 @@ void gwenesis_sn76489_load_state() {
   saveGwenesisStateGetBuffer(state, "gwenesis_SN76489", &gwenesis_SN76489, sizeof(gwenesis_SN76489));
 
 }
+#endif

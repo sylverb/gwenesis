@@ -16,6 +16,9 @@ __contact__ = "https://github.com/bzhxx"
 __license__ = "GPLv3"
 
 */
+#include "build/config.h"
+#ifdef ENABLE_EMULATOR_MD
+
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
@@ -237,3 +240,4 @@ void gwenesis_io_load_state() {
     saveGwenesisStateGetBuffer(state, "gwenesis_io_pad_state", gwenesis_io_pad_state, sizeof(gwenesis_io_pad_state));
     saveGwenesisStateGetBuffer(state, "io_reg", io_reg, sizeof(io_reg));
 }
+#endif

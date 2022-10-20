@@ -12,6 +12,9 @@
 /**     commercially. Please, notify me, if you make any    **/   
 /**     changes to this file.                               **/
 /*************************************************************/
+#include "build/config.h"
+#ifdef ENABLE_EMULATOR_MD
+
 #if GNW_TARGET_MARIO !=0 || GNW_TARGET_ZELDA!=0
   #pragma GCC optimize("Ofast")
 #endif
@@ -703,3 +706,4 @@ word RunZ80(Z80 *R)
   return(R->PC.W);
 }
 #endif /* !EXECZ80 */
+#endif

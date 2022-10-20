@@ -16,6 +16,9 @@ __contact__ = "https://github.com/bzhxx"
 __license__ = "GPLv3"
 
 */
+#include "build/config.h"
+#ifdef ENABLE_EMULATOR_MD
+
 #include <stdio.h>
 #include <stdint.h>
 #include <assert.h>
@@ -353,4 +356,4 @@ void gwenesis_z80inst_load_state() {
     current_timeslice = saveGwenesisStateGet(state, "current_timeslice");
 
 }
-
+#endif
