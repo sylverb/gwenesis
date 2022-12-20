@@ -64,8 +64,8 @@ void vdpm_log(const char *subs, const char *fmt, ...) {
 
 
 #if GNW_TARGET_MARIO != 0 | GNW_TARGET_ZELDA != 0
-  extern uint8_t emulator_framebuffer[1024*64];
-  unsigned char* VRAM = &emulator_framebuffer[0];
+  static uint8_t vram[1024*64];
+  unsigned char* VRAM = vram;
 #else
   unsigned char VRAM[VRAM_MAX_SIZE];
 #endif
