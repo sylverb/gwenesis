@@ -256,16 +256,11 @@ void gwenesis_SN76489_Write(int data, int target)
     }
 }
 
-void gwenesis_sn76489_save_state() {
-  SaveState* state;
-  state = saveGwenesisStateOpenForWrite("sn76489");
-  saveGwenesisStateSetBuffer(state, "gwenesis_SN76489", &gwenesis_SN76489, sizeof(gwenesis_SN76489));
-
+void gwenesis_sn76489_save_state(fs_file_t *file) {
+    fs_write(file, &gwenesis_SN76489, sizeof(gwenesis_SN76489));
 }
 
-void gwenesis_sn76489_load_state() {
-  SaveState* state = saveGwenesisStateOpenForRead("sn76489");
-  saveGwenesisStateGetBuffer(state, "gwenesis_SN76489", &gwenesis_SN76489, sizeof(gwenesis_SN76489));
-
+void gwenesis_sn76489_load_state(fs_file_t *file) {
+    fs_read(file, &gwenesis_SN76489, sizeof(gwenesis_SN76489));
 }
 #endif

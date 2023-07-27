@@ -2333,28 +2333,33 @@ int YM2612SaveContext(unsigned char *state)
 }
 #endif
 
-void gwenesis_ym2612_save_state() {
-  SaveState* state;
-  state = saveGwenesisStateOpenForWrite("ym2612");
-  saveGwenesisStateSetBuffer(state, "ym2612", &ym2612, sizeof(ym2612));
-  saveGwenesisStateSet(state, "m2", m2);
-  saveGwenesisStateSet(state, "c1", c1);
-  saveGwenesisStateSet(state, "c2", c2);
-  saveGwenesisStateSet(state, "mem", mem);
-  saveGwenesisStateSetBuffer(state, "out_fm", out_fm, sizeof(out_fm));
-  saveGwenesisStateSet(state, "bitmask", bitmask);
-  saveGwenesisStateSetBuffer(state, "OPNREGS", OPNREGS, sizeof(OPNREGS));
+void gwenesis_ym2612_save_state(fs_file_t *file) {
+  fs_write(file, &ym2612, sizeof(ym2612));
+
+  fs_write(file, &m2, 4);
+  fs_write(file, &c1, 4);
+  fs_write(file, &c2, 4);
+  fs_write(file, &mem, 4);
+
+  fs_write(file, out_fm, sizeof(out_fm));
+
+  fs_write(file, &bitmask, 4);
+
+  fs_write(file, OPNREGS, sizeof(OPNREGS));
 }
 
-void gwenesis_ym2612_load_state() {
-  SaveState* state = saveGwenesisStateOpenForRead("ym2612");
-  saveGwenesisStateGetBuffer(state, "ym2612", &ym2612, sizeof(ym2612));
-  m2 = saveGwenesisStateGet(state, "m2");
-  c1 = saveGwenesisStateGet(state, "c1");
-  c2 = saveGwenesisStateGet(state, "c2");
-  mem = saveGwenesisStateGet(state, "mem");
-  saveGwenesisStateGetBuffer(state, "out_fm", out_fm, sizeof(out_fm));
-  bitmask = saveGwenesisStateGet(state, "bitmask");
-  saveGwenesisStateGetBuffer(state, "OPNREGS", OPNREGS, sizeof(OPNREGS));
+void gwenesis_ym2612_load_state(fs_file_t *file) {
+  fs_read(file, &ym2612, sizeof(ym2612));
+
+  fs_read(file, &m2, 4);
+  fs_read(file, &c1, 4);
+  fs_read(file, &c2, 4);
+  fs_read(file, &mem, 4);
+
+  fs_read(file, out_fm, sizeof(out_fm));
+
+  fs_read(file, &bitmask, 4);
+
+  fs_read(file, OPNREGS, sizeof(OPNREGS));
 }
 #endif

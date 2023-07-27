@@ -677,22 +677,19 @@ unsigned int m68k_read_disassembler_32(unsigned int address)
     return m68k_read_memory_32(address);
 }
 
-void gwenesis_bus_save_state() {
-  SaveState* state;
-  state = saveGwenesisStateOpenForWrite("bus");
-  saveGwenesisStateSetBuffer(state, "M68K_RAM", M68K_RAM, MAX_RAM_SIZE);
-  saveGwenesisStateSetBuffer(state, "ZRAM", ZRAM, MAX_Z80_RAM_SIZE);
-  saveGwenesisStateSetBuffer(state, "TMSS", TMSS, sizeof(TMSS));
-  saveGwenesisStateSet(state, "tmss_state", tmss_state);
-  saveGwenesisStateSet(state, "tmss_count", tmss_count);
+void gwenesis_bus_save_state(fs_file_t *file) {
+  fs_write(file, M68K_RAM, MAX_RAM_SIZE);
+  fs_write(file, ZRAM, MAX_Z80_RAM_SIZE);
+  fs_write(file, TMSS, sizeof(TMSS));
+  fs_write(file, &tmss_state, 4);
+  fs_write(file, &tmss_count, 4);
 }
 
-void gwenesis_bus_load_state() {
-    SaveState* state = saveGwenesisStateOpenForRead("bus");
-    saveGwenesisStateGetBuffer(state, "M68K_RAM", M68K_RAM, MAX_RAM_SIZE);
-    saveGwenesisStateGetBuffer(state, "ZRAM", ZRAM, MAX_Z80_RAM_SIZE);
-    saveGwenesisStateGetBuffer(state, "TMSS", TMSS, sizeof(TMSS));
-    tmss_state = saveGwenesisStateGet(state, "tmss_state");
-    tmss_count = saveGwenesisStateGet(state, "tmss_count");
+void gwenesis_bus_load_state(fs_file_t *file) {
+  fs_read(file, M68K_RAM, MAX_RAM_SIZE);
+  fs_read(file, ZRAM, MAX_Z80_RAM_SIZE);
+  fs_read(file, TMSS, sizeof(TMSS));
+  fs_read(file, &tmss_state, 4);
+  fs_read(file, &tmss_count, 4);
 }
 #endif

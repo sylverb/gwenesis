@@ -226,18 +226,15 @@ void gwenesis_io_set_reg(unsigned int reg, unsigned int value) {
     return;
 }
 
-void gwenesis_io_save_state() {
-    SaveState* state;
-    state = saveGwenesisStateOpenForWrite("io");
-    saveGwenesisStateSetBuffer(state, "button_state", button_state, sizeof(button_state));
-    saveGwenesisStateSetBuffer(state, "gwenesis_io_pad_state", gwenesis_io_pad_state, sizeof(gwenesis_io_pad_state));
-    saveGwenesisStateSetBuffer(state, "io_reg", io_reg, sizeof(io_reg));
+void gwenesis_io_save_state(fs_file_t *file) {
+    fs_write(file, button_state, sizeof(button_state));
+    fs_write(file, gwenesis_io_pad_state, sizeof(gwenesis_io_pad_state));
+    fs_write(file, io_reg, sizeof(io_reg));
 }
 
-void gwenesis_io_load_state() {
-    SaveState* state = saveGwenesisStateOpenForRead("io");
-    saveGwenesisStateGetBuffer(state, "button_state", button_state, sizeof(button_state));
-    saveGwenesisStateGetBuffer(state, "gwenesis_io_pad_state", gwenesis_io_pad_state, sizeof(gwenesis_io_pad_state));
-    saveGwenesisStateGetBuffer(state, "io_reg", io_reg, sizeof(io_reg));
+void gwenesis_io_load_state(fs_file_t *file) {
+    fs_read(file, button_state, sizeof(button_state));
+    fs_read(file, gwenesis_io_pad_state, sizeof(gwenesis_io_pad_state));
+    fs_read(file, io_reg, sizeof(io_reg));
 }
 #endif

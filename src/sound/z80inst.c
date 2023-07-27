@@ -331,29 +331,27 @@ void OutZ80(register word Port, register byte Value) {;}
 void PatchZ80(register Z80 *R) {;}
 void DebugZ80(register Z80 *R) {;}
 
-void gwenesis_z80inst_save_state() {
-    SaveState* state;
-    state = saveGwenesisStateOpenForWrite("z80inst");
-    saveGwenesisStateSetBuffer(state, "cpu", &cpu, sizeof(Z80));
-    saveGwenesisStateSet(state, "bus_ack", bus_ack);
-    saveGwenesisStateSet(state, "reset", reset);
-    saveGwenesisStateSet(state, "reset_once", reset_once);
-    saveGwenesisStateSet(state, "zclk", zclk);
-    saveGwenesisStateSet(state, "initialized", initialized);
-    saveGwenesisStateSet(state, "Z80_BANK", Z80_BANK);
-    saveGwenesisStateSet(state, "current_timeslice",current_timeslice);
+void gwenesis_z80inst_save_state(fs_file_t *file) {
+    fs_write(file, &cpu, sizeof(Z80));
+
+    fs_write(file, &bus_ack, 4);
+    fs_write(file, &reset, 4);
+    fs_write(file, &reset_once, 4);
+    fs_write(file, &zclk, 4);
+    fs_write(file, &initialized, 4);
+    fs_write(file, &Z80_BANK, 4);
+    fs_write(file, &current_timeslice, 4);
 }
 
-void gwenesis_z80inst_load_state() {
-    SaveState* state = saveGwenesisStateOpenForRead("z80inst");
-    saveGwenesisStateGetBuffer(state, "cpu", &cpu, sizeof(Z80));
-    bus_ack = saveGwenesisStateGet(state, "bus_ack");
-    reset = saveGwenesisStateGet(state, "reset");
-    reset_once = saveGwenesisStateGet(state, "reset_once");
-    zclk = saveGwenesisStateGet(state, "zclk");
-    initialized = saveGwenesisStateGet(state, "initialized");
-    Z80_BANK = saveGwenesisStateGet(state, "Z80_BANK");
-    current_timeslice = saveGwenesisStateGet(state, "current_timeslice");
+void gwenesis_z80inst_load_state(fs_file_t *file) {
+    fs_read(file, &cpu, sizeof(Z80));
 
+    fs_read(file, &bus_ack, 4);
+    fs_read(file, &reset, 4);
+    fs_read(file, &reset_once, 4);
+    fs_read(file, &zclk, 4);
+    fs_read(file, &initialized, 4);
+    fs_read(file, &Z80_BANK, 4);
+    fs_read(file, &current_timeslice, 4);
 }
 #endif

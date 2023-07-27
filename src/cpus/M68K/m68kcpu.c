@@ -418,40 +418,43 @@ void m68k_clear_halt(void)
   CPU_STOPPED &= ~STOP_LEVEL_HALT;
 }
 
-void gwenesis_m68k_save_state() {
-  SaveState *state;
-  state = saveGwenesisStateOpenForWrite("m68k");
-  
-  saveGwenesisStateSetBuffer(state, "REG_D", REG_D, sizeof(REG_D));
-  saveGwenesisStateSet(state, "SR", m68ki_get_sr());
-  saveGwenesisStateSet(state, "REG_PC", REG_PC);
-  saveGwenesisStateSet(state, "REG_SP", REG_SP);
-  saveGwenesisStateSet(state, "REG_USP", REG_USP);
-  saveGwenesisStateSet(state, "REG_ISP", REG_ISP);
-  saveGwenesisStateSet(state, "REG_IR", REG_IR);
+void gwenesis_m68k_save_state(fs_file_t *file) {
+  fs_write(file, REG_D, sizeof(REG_D));
+  {
+    uint32_t sr = m68ki_get_sr();
+    fs_write(file, &sr, 4);
+  }
+  fs_write(file, &REG_PC, 4);
+  fs_write(file, &REG_SP, 4);
+  fs_write(file, &REG_USP, 4);
+  fs_write(file, &REG_ISP, 4);
+  fs_write(file, &REG_IR, 4);
 
-  saveGwenesisStateSet(state, "m68k_cycle_end", m68k.cycle_end);
-  saveGwenesisStateSet(state, "m68k_cycles", m68k.cycles);
-  saveGwenesisStateSet(state, "m68k_int_level", m68k.int_level);
-  saveGwenesisStateSet(state, "m68k_stopped", m68k.stopped);
+  fs_write(file, &m68k.cycle_end, 4);
+  fs_write(file, &m68k.cycles, 4);
+  fs_write(file, &m68k.int_level, 4);
+  fs_write(file, &m68k.stopped, 4);
 }
 
-void gwenesis_m68k_load_state() {
-  SaveState *state = saveGwenesisStateOpenForRead("m68k");
-  saveGwenesisStateGetBuffer(state, "REG_D", REG_D, sizeof(REG_D));
+void gwenesis_m68k_load_state(fs_file_t *file) {
+  fs_read(file, REG_D, sizeof(REG_D));
 
-  m68ki_set_sr(saveGwenesisStateGet(state, "SR"));
-  REG_PC = saveGwenesisStateGet(state, "REG_PC");
-  REG_SP = saveGwenesisStateGet(state, "REG_SP");
-  REG_USP = saveGwenesisStateGet(state, "REG_USP");
-  REG_ISP = saveGwenesisStateGet(state, "REG_ISP");
-  REG_IR = saveGwenesisStateGet(state, "REG_IR");
+  {
+    uint32_t sr;
+    fs_read(file, &sr, 4);
+    m68ki_set_sr(sr);
+  }
 
-  m68k.cycle_end = saveGwenesisStateGet(state, "m68k_cycle_end");
-  m68k.cycles = saveGwenesisStateGet(state, "m68k_cycles");
-  m68k.int_level = saveGwenesisStateGet(state, "m68k_int_level");
-  m68k.stopped = saveGwenesisStateGet(state, "m68k_stopped");
+  fs_read(file, &REG_PC, 4);
+  fs_read(file, &REG_SP, 4);
+  fs_read(file, &REG_USP, 4);
+  fs_read(file, &REG_ISP, 4);
+  fs_read(file, &REG_IR, 4);
 
+  fs_read(file, &m68k.cycle_end, 4);
+  fs_read(file, &m68k.cycles, 4);
+  fs_read(file, &m68k.int_level, 4);
+  fs_read(file, &m68k.stopped, 4);
 }
 
 /* ======================================================================== */

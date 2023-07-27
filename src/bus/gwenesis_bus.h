@@ -23,6 +23,7 @@ __license__ = "GPLv3"
 
 #include <stdio.h>
 #include <string.h>
+#include "filesystem.h"
 
 #define MAX_ROM_SIZE 0x800000
 #define MAX_RAM_SIZE 0x10000
@@ -95,7 +96,7 @@ void power_on();
 void reset_emulation();
 void set_region();
 
-void gwenesis_bus_save_state();
-void gwenesis_bus_load_state();
+void gwenesis_bus_save_state(fs_file_t *file);
+void gwenesis_bus_load_state(fs_file_t *file);
 
 #endif

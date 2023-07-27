@@ -1277,7 +1277,7 @@ void gwenesis_vdp_render_line(int line)
 #endif
 }
 
-void gwenesis_vdp_gfx_save_state() {
+void gwenesis_vdp_gfx_save_state(fs_file_t *file) {
   /*
   SaveState* state;
   state = saveGwenesisStateOpenForWrite("vdp_gfx");
@@ -1297,7 +1297,7 @@ void gwenesis_vdp_gfx_save_state() {
   */
 }
 
-void gwenesis_vdp_gfx_load_state() {
+void gwenesis_vdp_gfx_load_state(fs_file_t *file) {
   /*
     SaveState* state = saveGwenesisStateOpenForRead("vdp_gfx");
     saveGwenesisStateGetBuffer(state, "render_buffer", render_buffer, sizeof(render_buffer));

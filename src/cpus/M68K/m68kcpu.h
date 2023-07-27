@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
+#include "filesystem.h"
 
 #if M68K_EMULATE_ADDRESS_ERROR
 #include <setjmp.h>
@@ -525,8 +526,8 @@
 /* =========================== UTILITY FUNCTIONS ========================== */
 /* ======================================================================== */
 
-void gwenesis_m68k_save_state();
-void gwenesis_m68k_load_state();
+void gwenesis_m68k_save_state(fs_file_t *file);
+void gwenesis_m68k_load_state(fs_file_t *file);
 
 /* ----------------------------- Read / Write ----------------------------- */
 

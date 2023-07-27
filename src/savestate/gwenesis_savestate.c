@@ -37,27 +37,25 @@ __license__ = "GPLv3"
 
 #include <assert.h>
 
-void gwenesis_save_state() {
-  gwenesis_m68k_save_state();
-  gwenesis_io_save_state();
-  gwenesis_bus_save_state();
-  gwenesis_vdp_gfx_save_state();
-  gwenesis_vdp_mem_save_state();
-  gwenesis_z80inst_save_state();
-  gwenesis_ym2612_save_state();
-  gwenesis_sn76489_save_state();
-
+void gwenesis_save_state(fs_file_t *file) {
+  gwenesis_m68k_save_state(file);
+  gwenesis_io_save_state(file);
+  gwenesis_bus_save_state(file);
+  gwenesis_vdp_gfx_save_state(file);
+  gwenesis_vdp_mem_save_state(file);
+  gwenesis_z80inst_save_state(file);
+  gwenesis_ym2612_save_state(file);
+  gwenesis_sn76489_save_state(file);
 }
 
-void gwenesis_load_state() {
-  gwenesis_m68k_load_state();
-  gwenesis_io_load_state();
-  gwenesis_bus_load_state();
-  gwenesis_vdp_gfx_load_state();
-  gwenesis_vdp_mem_load_state();
-  gwenesis_z80inst_load_state();
-  gwenesis_ym2612_load_state();
-  gwenesis_sn76489_load_state();
-
+void gwenesis_load_state(fs_file_t *file) {
+  gwenesis_m68k_load_state(file);
+  gwenesis_io_load_state(file);
+  gwenesis_bus_load_state(file);
+  gwenesis_vdp_gfx_load_state(file);
+  gwenesis_vdp_mem_load_state(file);
+  gwenesis_z80inst_load_state(file);
+  gwenesis_ym2612_load_state(file);
+  gwenesis_sn76489_load_state(file);
 }
 #endif
