@@ -332,26 +332,26 @@ void PatchZ80(register Z80 *R) {;}
 void DebugZ80(register Z80 *R) {;}
 
 void gwenesis_z80inst_save_state(fs_file_t *file) {
-    fs_write(file, &cpu, sizeof(Z80));
+    fs_write(file, (unsigned char *)&cpu, sizeof(Z80));
 
-    fs_write(file, &bus_ack, 4);
-    fs_write(file, &reset, 4);
-    fs_write(file, &reset_once, 4);
-    fs_write(file, &zclk, 4);
-    fs_write(file, &initialized, 4);
-    fs_write(file, &Z80_BANK, 4);
-    fs_write(file, &current_timeslice, 4);
+    fs_write(file, (unsigned char *)&bus_ack, 4);
+    fs_write(file, (unsigned char *)&reset, 4);
+    fs_write(file, (unsigned char *)&reset_once, 4);
+    fs_write(file, (unsigned char *)&zclk, 4);
+    fs_write(file, (unsigned char *)&initialized, 4);
+    fs_write(file, (unsigned char *)&Z80_BANK, 4);
+    fs_write(file, (unsigned char *)&current_timeslice, 4);
 }
 
 void gwenesis_z80inst_load_state(fs_file_t *file) {
-    fs_read(file, &cpu, sizeof(Z80));
+    fs_read(file, (unsigned char *)&cpu, sizeof(Z80));
 
-    fs_read(file, &bus_ack, 4);
-    fs_read(file, &reset, 4);
-    fs_read(file, &reset_once, 4);
-    fs_read(file, &zclk, 4);
-    fs_read(file, &initialized, 4);
-    fs_read(file, &Z80_BANK, 4);
-    fs_read(file, &current_timeslice, 4);
+    fs_read(file, (unsigned char *)&bus_ack, 4);
+    fs_read(file, (unsigned char *)&reset, 4);
+    fs_read(file, (unsigned char *)&reset_once, 4);
+    fs_read(file, (unsigned char *)&zclk, 4);
+    fs_read(file, (unsigned char *)&initialized, 4);
+    fs_read(file, (unsigned char *)&Z80_BANK, 4);
+    fs_read(file, (unsigned char *)&current_timeslice, 4);
 }
 #endif

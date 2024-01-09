@@ -2334,32 +2334,32 @@ int YM2612SaveContext(unsigned char *state)
 #endif
 
 void gwenesis_ym2612_save_state(fs_file_t *file) {
-  fs_write(file, &ym2612, sizeof(ym2612));
+  fs_write(file, (unsigned char *)&ym2612, sizeof(ym2612));
 
-  fs_write(file, &m2, 4);
-  fs_write(file, &c1, 4);
-  fs_write(file, &c2, 4);
-  fs_write(file, &mem, 4);
+  fs_write(file, (unsigned char *)&m2, 4);
+  fs_write(file, (unsigned char *)&c1, 4);
+  fs_write(file, (unsigned char *)&c2, 4);
+  fs_write(file, (unsigned char *)&mem, 4);
 
-  fs_write(file, out_fm, sizeof(out_fm));
+  fs_write(file, (unsigned char *)out_fm, sizeof(out_fm));
 
-  fs_write(file, &bitmask, 4);
+  fs_write(file, (unsigned char *)&bitmask, 4);
 
-  fs_write(file, OPNREGS, sizeof(OPNREGS));
+  fs_write(file, (unsigned char *)OPNREGS, sizeof(OPNREGS));
 }
 
 void gwenesis_ym2612_load_state(fs_file_t *file) {
-  fs_read(file, &ym2612, sizeof(ym2612));
+  fs_read(file, (unsigned char *)&ym2612, sizeof(ym2612));
 
-  fs_read(file, &m2, 4);
-  fs_read(file, &c1, 4);
-  fs_read(file, &c2, 4);
-  fs_read(file, &mem, 4);
+  fs_read(file, (unsigned char *)&m2, 4);
+  fs_read(file, (unsigned char *)&c1, 4);
+  fs_read(file, (unsigned char *)&c2, 4);
+  fs_read(file, (unsigned char *)&mem, 4);
 
-  fs_read(file, out_fm, sizeof(out_fm));
+  fs_read(file, (unsigned char *)out_fm, sizeof(out_fm));
 
-  fs_read(file, &bitmask, 4);
+  fs_read(file, (unsigned char *)&bitmask, 4);
 
-  fs_read(file, OPNREGS, sizeof(OPNREGS));
+  fs_read(file, (unsigned char *)OPNREGS, sizeof(OPNREGS));
 }
 #endif

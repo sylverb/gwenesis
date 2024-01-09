@@ -994,40 +994,40 @@ void gwenesis_vdp_write_memory_16(unsigned int address, unsigned int value) {
 }
 
 void gwenesis_vdp_mem_save_state(fs_file_t *file) {
-  fs_write(file, VRAM, VRAM_MAX_SIZE);
-  fs_write(file, CRAM, sizeof(CRAM));
-  fs_write(file, SAT_CACHE, sizeof(SAT_CACHE));
-  fs_write(file, gwenesis_vdp_regs, sizeof(gwenesis_vdp_regs));
-  fs_write(file, fifo, sizeof(fifo));
-  fs_write(file, CRAM565, sizeof(CRAM565));
-  fs_write(file, VSRAM, sizeof(VSRAM));
+  fs_write(file, (unsigned char *)VRAM, VRAM_MAX_SIZE);
+  fs_write(file, (unsigned char *)CRAM, sizeof(CRAM));
+  fs_write(file, (unsigned char *)SAT_CACHE, sizeof(SAT_CACHE));
+  fs_write(file, (unsigned char *)gwenesis_vdp_regs, sizeof(gwenesis_vdp_regs));
+  fs_write(file, (unsigned char *)fifo, sizeof(fifo));
+  fs_write(file, (unsigned char *)CRAM565, sizeof(CRAM565));
+  fs_write(file, (unsigned char *)VSRAM, sizeof(VSRAM));
 
-  fs_write(file, &code_reg, 4);
-  fs_write(file, &address_reg, 4);
-  fs_write(file, &command_word_pending, 4);
-  fs_write(file, &gwenesis_vdp_status, 4);
-  fs_write(file, &dma_fill_pending, 4);
-  fs_write(file, &hvcounter_latch, 4);
-  fs_write(file, &hvcounter_latched, 4);
-  fs_write(file, &hint_pending, 4);
+  fs_write(file, (unsigned char *)&code_reg, 4);
+  fs_write(file, (unsigned char *)&address_reg, 4);
+  fs_write(file, (unsigned char *)&command_word_pending, 4);
+  fs_write(file, (unsigned char *)&gwenesis_vdp_status, 4);
+  fs_write(file, (unsigned char *)&dma_fill_pending, 4);
+  fs_write(file, (unsigned char *)&hvcounter_latch, 4);
+  fs_write(file, (unsigned char *)&hvcounter_latched, 4);
+  fs_write(file, (unsigned char *)&hint_pending, 4);
 }
 
 void gwenesis_vdp_mem_load_state(fs_file_t *file) {
-  fs_read(file, VRAM, VRAM_MAX_SIZE);
-  fs_read(file, CRAM, sizeof(CRAM));
-  fs_read(file, SAT_CACHE, sizeof(SAT_CACHE));
-  fs_read(file, gwenesis_vdp_regs, sizeof(gwenesis_vdp_regs));
-  fs_read(file, fifo, sizeof(fifo));
-  fs_read(file, CRAM565, sizeof(CRAM565));
-  fs_read(file, VSRAM, sizeof(VSRAM));
+  fs_read(file, (unsigned char *)VRAM, VRAM_MAX_SIZE);
+  fs_read(file, (unsigned char *)CRAM, sizeof(CRAM));
+  fs_read(file, (unsigned char *)SAT_CACHE, sizeof(SAT_CACHE));
+  fs_read(file, (unsigned char *)gwenesis_vdp_regs, sizeof(gwenesis_vdp_regs));
+  fs_read(file, (unsigned char *)fifo, sizeof(fifo));
+  fs_read(file, (unsigned char *)CRAM565, sizeof(CRAM565));
+  fs_read(file, (unsigned char *)VSRAM, sizeof(VSRAM));
 
-  fs_read(file, &code_reg, 4);
-  fs_read(file, &address_reg, 4);
-  fs_read(file, &command_word_pending, 4);
-  fs_read(file, &gwenesis_vdp_status, 4);
-  fs_read(file, &dma_fill_pending, 4);
-  fs_read(file, &hvcounter_latch, 4);
-  fs_read(file, &hvcounter_latched, 4);
-  fs_read(file, &hint_pending, 4);
+  fs_read(file, (unsigned char *)&code_reg, 4);
+  fs_read(file, (unsigned char *)&address_reg, 4);
+  fs_read(file, (unsigned char *)&command_word_pending, 4);
+  fs_read(file, (unsigned char *)&gwenesis_vdp_status, 4);
+  fs_read(file, (unsigned char *)&dma_fill_pending, 4);
+  fs_read(file, (unsigned char *)&hvcounter_latch, 4);
+  fs_read(file, (unsigned char *)&hvcounter_latched, 4);
+  fs_read(file, (unsigned char *)&hint_pending, 4);
 }
 #endif

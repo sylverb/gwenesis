@@ -257,10 +257,10 @@ void gwenesis_SN76489_Write(int data, int target)
 }
 
 void gwenesis_sn76489_save_state(fs_file_t *file) {
-    fs_write(file, &gwenesis_SN76489, sizeof(gwenesis_SN76489));
+    fs_write(file, (unsigned char *)&gwenesis_SN76489, sizeof(gwenesis_SN76489));
 }
 
 void gwenesis_sn76489_load_state(fs_file_t *file) {
-    fs_read(file, &gwenesis_SN76489, sizeof(gwenesis_SN76489));
+    fs_read(file, (unsigned char *)&gwenesis_SN76489, sizeof(gwenesis_SN76489));
 }
 #endif

@@ -419,42 +419,42 @@ void m68k_clear_halt(void)
 }
 
 void gwenesis_m68k_save_state(fs_file_t *file) {
-  fs_write(file, REG_D, sizeof(REG_D));
+  fs_write(file, (unsigned char *)REG_D, sizeof(REG_D));
   {
     uint32_t sr = m68ki_get_sr();
-    fs_write(file, &sr, 4);
+    fs_write(file, (unsigned char *)&sr, 4);
   }
-  fs_write(file, &REG_PC, 4);
-  fs_write(file, &REG_SP, 4);
-  fs_write(file, &REG_USP, 4);
-  fs_write(file, &REG_ISP, 4);
-  fs_write(file, &REG_IR, 4);
+  fs_write(file, (unsigned char *)&REG_PC, 4);
+  fs_write(file, (unsigned char *)&REG_SP, 4);
+  fs_write(file, (unsigned char *)&REG_USP, 4);
+  fs_write(file, (unsigned char *)&REG_ISP, 4);
+  fs_write(file, (unsigned char *)&REG_IR, 4);
 
-  fs_write(file, &m68k.cycle_end, 4);
-  fs_write(file, &m68k.cycles, 4);
-  fs_write(file, &m68k.int_level, 4);
-  fs_write(file, &m68k.stopped, 4);
+  fs_write(file, (unsigned char *)&m68k.cycle_end, 4);
+  fs_write(file, (unsigned char *)&m68k.cycles, 4);
+  fs_write(file, (unsigned char *)&m68k.int_level, 4);
+  fs_write(file, (unsigned char *)&m68k.stopped, 4);
 }
 
 void gwenesis_m68k_load_state(fs_file_t *file) {
-  fs_read(file, REG_D, sizeof(REG_D));
+  fs_read(file, (unsigned char *)REG_D, sizeof(REG_D));
 
   {
     uint32_t sr;
-    fs_read(file, &sr, 4);
+    fs_read(file, (unsigned char *)&sr, 4);
     m68ki_set_sr(sr);
   }
 
-  fs_read(file, &REG_PC, 4);
-  fs_read(file, &REG_SP, 4);
-  fs_read(file, &REG_USP, 4);
-  fs_read(file, &REG_ISP, 4);
-  fs_read(file, &REG_IR, 4);
+  fs_read(file, (unsigned char *)&REG_PC, 4);
+  fs_read(file, (unsigned char *)&REG_SP, 4);
+  fs_read(file, (unsigned char *)&REG_USP, 4);
+  fs_read(file, (unsigned char *)&REG_ISP, 4);
+  fs_read(file, (unsigned char *)&REG_IR, 4);
 
-  fs_read(file, &m68k.cycle_end, 4);
-  fs_read(file, &m68k.cycles, 4);
-  fs_read(file, &m68k.int_level, 4);
-  fs_read(file, &m68k.stopped, 4);
+  fs_read(file, (unsigned char *)&m68k.cycle_end, 4);
+  fs_read(file, (unsigned char *)&m68k.cycles, 4);
+  fs_read(file, (unsigned char *)&m68k.int_level, 4);
+  fs_read(file, (unsigned char *)&m68k.stopped, 4);
 }
 
 /* ======================================================================== */

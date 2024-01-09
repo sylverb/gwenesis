@@ -678,18 +678,18 @@ unsigned int m68k_read_disassembler_32(unsigned int address)
 }
 
 void gwenesis_bus_save_state(fs_file_t *file) {
-  fs_write(file, M68K_RAM, MAX_RAM_SIZE);
-  fs_write(file, ZRAM, MAX_Z80_RAM_SIZE);
-  fs_write(file, TMSS, sizeof(TMSS));
-  fs_write(file, &tmss_state, 4);
-  fs_write(file, &tmss_count, 4);
+  fs_write(file, (unsigned char *)M68K_RAM, MAX_RAM_SIZE);
+  fs_write(file, (unsigned char *)ZRAM, MAX_Z80_RAM_SIZE);
+  fs_write(file, (unsigned char *)TMSS, sizeof(TMSS));
+  fs_write(file, (unsigned char *)&tmss_state, 4);
+  fs_write(file, (unsigned char *)&tmss_count, 4);
 }
 
 void gwenesis_bus_load_state(fs_file_t *file) {
-  fs_read(file, M68K_RAM, MAX_RAM_SIZE);
-  fs_read(file, ZRAM, MAX_Z80_RAM_SIZE);
-  fs_read(file, TMSS, sizeof(TMSS));
-  fs_read(file, &tmss_state, 4);
-  fs_read(file, &tmss_count, 4);
+  fs_read(file, (unsigned char *)M68K_RAM, MAX_RAM_SIZE);
+  fs_read(file, (unsigned char *)ZRAM, MAX_Z80_RAM_SIZE);
+  fs_read(file, (unsigned char *)TMSS, sizeof(TMSS));
+  fs_read(file, (unsigned char *)&tmss_state, 4);
+  fs_read(file, (unsigned char *)&tmss_count, 4);
 }
 #endif
