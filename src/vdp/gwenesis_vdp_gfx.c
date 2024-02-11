@@ -739,8 +739,8 @@ void draw_sprites_over_planes(int line)
         //uint8_t *cache = start_table + sidx*8;
         
 
-        int sy = ((cache[0] & 0x3) << 8) | cache[1];
-        int sx = ((table[6] & 0x3) << 8) | table[7];
+        int sy = (((cache[0] & 0x3) << 8) | cache[1]) & 0x1ff;
+        int sx = (((table[6] & 0x3) << 8) | table[7]) & 0x1ff;
         uint16_t name = (table[4] << 8) | table[5];
 
 
@@ -846,8 +846,8 @@ void draw_sprites(int line)
 
     //uint8_t *cache = SAT_CACHE + sidx * 8;
 
-    int sy = ((cache[0] & 0x3) << 8) | cache[1];
-    int sx = ((table[6] & 0x3) << 8) | table[7];
+    int sy = (((cache[0] & 0x3) << 8) | cache[1]) & 0x1ff;
+    int sx = (((table[6] & 0x3) << 8) | table[7]) & 0x1ff;
     uint16_t name = (table[4] << 8) | table[5];
 
     int sh = BITS(cache[2], 0, 2) + 1;
