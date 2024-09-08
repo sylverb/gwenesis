@@ -7,8 +7,6 @@
     SN76489 variants and compatible chips.
 */
 
-#include "filesystem.h"
-
 #undef uint8
 #undef uint16
 #undef uint32
@@ -69,7 +67,9 @@ int gwenesis_SN76489_GetContextSize(void);
 void gwenesis_SN76489_Write(int data, int target);
 void gwenesis_SN76489_run(int target);
 
+/*
 void gwenesis_sn76489_save_state(fs_file_t *file);
 void gwenesis_sn76489_load_state(fs_file_t *file);
+*/
 
 #endif /* _GWENESIS_SN76489_H_ */

@@ -21,8 +21,6 @@ __license__ = "GPLv3"
 
 #pragma once
 
-#include "filesystem.h"
-
 void gwenesis_io_pad_press_button(int pad, int button);
 void gwenesis_io_pad_release_button(int pad, int button);
 
@@ -32,7 +30,7 @@ unsigned int gwenesis_io_read_ctrl(unsigned int address);
 void gwenesis_io_set_reg(unsigned int reg, unsigned int value);
 void gwenesis_io_get_buttons();
 
-void gwenesis_io_save_state(fs_file_t *file);
-void gwenesis_io_load_state(fs_file_t *file);
+//void gwenesis_io_save_state(fs_file_t *file);
+//void gwenesis_io_load_state(fs_file_t *file);
 
 #endif

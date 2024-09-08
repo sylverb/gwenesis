@@ -19,7 +19,6 @@ __license__ = "GPLv3"
 #ifndef _Z80_INTERFACE_H_
 #define _Z80_INTERFACE_H_
 
-#include "filesystem.h"
 
 void z80_write_ctrl(unsigned int address, unsigned int value);
 unsigned int z80_read_ctrl(unsigned int address);
@@ -29,8 +28,8 @@ void z80_execute(unsigned int target);
 void z80_run(int target);
 extern int zclk;
 
-void gwenesis_z80inst_save_state(fs_file_t *file);
-void gwenesis_z80inst_load_state(fs_file_t *file);
+//void gwenesis_z80inst_save_state(fs_file_t *file);
+//void gwenesis_z80inst_load_state(fs_file_t *file);
 
 void z80_set_memory(unsigned char *buffer);
 

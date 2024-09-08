@@ -22,9 +22,6 @@
     07/08/04  bzhxx few simplication for gwenesis to fit on MCU
 */
 
-#include "build/config.h"
-#ifdef ENABLE_EMULATOR_MD
-
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -256,6 +253,7 @@ void gwenesis_SN76489_Write(int data, int target)
     }
 }
 
+/*
 void gwenesis_sn76489_save_state(fs_file_t *file) {
     fs_write(file, (unsigned char *)&gwenesis_SN76489, sizeof(gwenesis_SN76489));
 }
@@ -263,4 +261,4 @@ void gwenesis_sn76489_save_state(fs_file_t *file) {
 void gwenesis_sn76489_load_state(fs_file_t *file) {
     fs_read(file, (unsigned char *)&gwenesis_SN76489, sizeof(gwenesis_SN76489));
 }
-#endif
+*/

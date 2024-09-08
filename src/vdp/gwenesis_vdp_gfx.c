@@ -16,8 +16,6 @@ __contact__ = "https://github.com/bzhxx"
 __license__ = "GPLv3"
 
 */
-#include "build/config.h"
-#ifdef ENABLE_EMULATOR_MD
 
 #include <stdio.h>
 #include <string.h>
@@ -1277,7 +1275,8 @@ void gwenesis_vdp_render_line(int line)
 #endif
 }
 
-void gwenesis_vdp_gfx_save_state(fs_file_t *file) {
+
+//void gwenesis_vdp_gfx_save_state(fs_file_t *file) {
   /*
   SaveState* state;
   state = saveGwenesisStateOpenForWrite("vdp_gfx");
@@ -1295,9 +1294,9 @@ void gwenesis_vdp_gfx_save_state(fs_file_t *file) {
   saveGwenesisStateSet(state, "Window_firstcol", Window_firstcol);
   saveGwenesisStateSet(state, "Window_lastcol", Window_lastcol);
   */
-}
+//}
 
-void gwenesis_vdp_gfx_load_state(fs_file_t *file) {
+//void gwenesis_vdp_gfx_load_state(fs_file_t *file) {
   /*
     SaveState* state = saveGwenesisStateOpenForRead("vdp_gfx");
     saveGwenesisStateGetBuffer(state, "render_buffer", render_buffer, sizeof(render_buffer));
@@ -1314,5 +1313,4 @@ void gwenesis_vdp_gfx_load_state(fs_file_t *file) {
     Window_firstcol = saveGwenesisStateGet(state, "Window_firstcol");
     Window_lastcol = saveGwenesisStateGet(state, "Window_lastcol");
     */
-}
-#endif
+//}

@@ -16,8 +16,6 @@
 #ifndef _H_YM2612_
 #define _H_YM2612_
 
-#include "filesystem.h"
-
 extern int16_t gwenesis_ym2612_buffer[];
 extern int ym2612_index;
 extern int ym2612_clock;
@@ -38,7 +36,7 @@ extern int YM2612SaveContext(unsigned char *state);
 //extern void YM2612LoadRegs(uint8_t *regs);
 //extern void YM2612SaveRegs(uint8_t *regs);
 
-void gwenesis_ym2612_save_state(fs_file_t *file);
-void gwenesis_ym2612_load_state(fs_file_t *file);
+//void gwenesis_ym2612_save_state(fs_file_t *file);
+//void gwenesis_ym2612_load_state(fs_file_t *file);
 
 #endif /* _YM2612_ */

@@ -1,6 +1,3 @@
-#include "build/config.h"
-#ifdef ENABLE_EMULATOR_MD
-
 /* ======================================================================== */
 /*                            MAIN 68K CORE                                 */
 /* ======================================================================== */
@@ -25,7 +22,7 @@ extern int vdp_68k_irq_ack(int int_level);
 #include "m68kconf.h"
 #include "m68kcpu.h"
 #include "m68kops.h"
-#include "gwenesis_savestate.h"
+//#include "gwenesis_savestate.h"
 
 /* ======================================================================== */
 /* ================================= DATA ================================= */
@@ -418,7 +415,7 @@ void m68k_clear_halt(void)
   CPU_STOPPED &= ~STOP_LEVEL_HALT;
 }
 
-void gwenesis_m68k_save_state(fs_file_t *file) {
+/*void gwenesis_m68k_save_state(fs_file_t *file) {
   fs_write(file, (unsigned char *)REG_D, sizeof(REG_D));
   {
     uint32_t sr = m68ki_get_sr();
@@ -455,9 +452,8 @@ void gwenesis_m68k_load_state(fs_file_t *file) {
   fs_read(file, (unsigned char *)&m68k.cycles, 4);
   fs_read(file, (unsigned char *)&m68k.int_level, 4);
   fs_read(file, (unsigned char *)&m68k.stopped, 4);
-}
+}*/
 
 /* ======================================================================== */
 /* ============================== END OF FILE ============================= */
 /* ======================================================================== */
-#endif

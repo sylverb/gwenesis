@@ -16,8 +16,6 @@ __contact__ = "https://github.com/bzhxx"
 __license__ = "GPLv3"
 
 */
-#include "build/config.h"
-#ifdef ENABLE_EMULATOR_MD
 
 #include <stdio.h>
 #include <stdint.h>
@@ -331,7 +329,7 @@ void OutZ80(register word Port, register byte Value) {;}
 void PatchZ80(register Z80 *R) {;}
 void DebugZ80(register Z80 *R) {;}
 
-void gwenesis_z80inst_save_state(fs_file_t *file) {
+/*void gwenesis_z80inst_save_state(fs_file_t *file) {
     fs_write(file, (unsigned char *)&cpu, sizeof(Z80));
 
     fs_write(file, (unsigned char *)&bus_ack, 4);
@@ -353,5 +351,4 @@ void gwenesis_z80inst_load_state(fs_file_t *file) {
     fs_read(file, (unsigned char *)&initialized, 4);
     fs_read(file, (unsigned char *)&Z80_BANK, 4);
     fs_read(file, (unsigned char *)&current_timeslice, 4);
-}
-#endif
+}*/

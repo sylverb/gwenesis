@@ -127,8 +127,6 @@
 /*    YM2610  : PSG:3ch FM:4ch ADPCM(18.5KHz):6ch DeltaT ADPCM:1ch      */
 /*    YM2610B : PSG:3ch FM:6ch ADPCM(18.5KHz):6ch DeltaT ADPCM:1ch      */
 /************************************************************************/
-#include "build/config.h"
-#ifdef ENABLE_EMULATOR_MD
 
 #if GNW_TARGET_MARIO !=0 || GNW_TARGET_ZELDA!=0
   #pragma GCC optimize("Ofast")
@@ -2333,6 +2331,7 @@ int YM2612SaveContext(unsigned char *state)
 }
 #endif
 
+/*
 void gwenesis_ym2612_save_state(fs_file_t *file) {
   fs_write(file, (unsigned char *)&ym2612, sizeof(ym2612));
 
@@ -2362,4 +2361,4 @@ void gwenesis_ym2612_load_state(fs_file_t *file) {
 
   fs_read(file, (unsigned char *)OPNREGS, sizeof(OPNREGS));
 }
-#endif
+*/

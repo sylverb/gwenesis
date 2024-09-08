@@ -16,8 +16,6 @@ __contact__ = "https://github.com/bzhxx"
 __license__ = "GPLv3"
 
 */
-#include "build/config.h"
-#ifdef ENABLE_EMULATOR_MD
 
 #include <stdint.h>
 #include <stdio.h>
@@ -993,6 +991,7 @@ void gwenesis_vdp_write_memory_16(unsigned int address, unsigned int value) {
 
 }
 
+/*
 void gwenesis_vdp_mem_save_state(fs_file_t *file) {
   fs_write(file, (unsigned char *)VRAM, VRAM_MAX_SIZE);
   fs_write(file, (unsigned char *)CRAM, sizeof(CRAM));
@@ -1030,4 +1029,4 @@ void gwenesis_vdp_mem_load_state(fs_file_t *file) {
   fs_read(file, (unsigned char *)&hvcounter_latched, 4);
   fs_read(file, (unsigned char *)&hint_pending, 4);
 }
-#endif
+*/

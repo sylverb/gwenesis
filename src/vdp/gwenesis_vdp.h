@@ -21,8 +21,6 @@ __license__ = "GPLv3"
 
 #pragma once
 
-#include "filesystem.h"
-
 #define BIT(v, idx) (((v) >> (idx)) & 1)
 #define BITS(v, idx, n) (((v) >> (idx)) & ((1 << (n)) - 1))
 
@@ -147,9 +145,11 @@ int gwenesis_vdp_vcounter();
 int gwenesis_vdp_hcounter();
 unsigned short gwenesis_vdp_hvcounter();
 
+/*
 void gwenesis_vdp_gfx_save_state(fs_file_t *file);
 void gwenesis_vdp_gfx_load_state(fs_file_t *file);
 void gwenesis_vdp_mem_save_state(fs_file_t *file);
 void gwenesis_vdp_mem_load_state(fs_file_t *file);
+*/
 
 #endif

@@ -16,8 +16,6 @@ __contact__ = "https://github.com/bzhxx"
 __license__ = "GPLv3"
 
 */
-#include "build/config.h"
-#ifdef ENABLE_EMULATOR_MD
 
 #include <stdio.h>
 #include <stdint.h>
@@ -677,6 +675,7 @@ unsigned int m68k_read_disassembler_32(unsigned int address)
     return m68k_read_memory_32(address);
 }
 
+/*
 void gwenesis_bus_save_state(fs_file_t *file) {
   fs_write(file, (unsigned char *)M68K_RAM, MAX_RAM_SIZE);
   fs_write(file, (unsigned char *)ZRAM, MAX_Z80_RAM_SIZE);
@@ -692,4 +691,4 @@ void gwenesis_bus_load_state(fs_file_t *file) {
   fs_read(file, (unsigned char *)&tmss_state, 4);
   fs_read(file, (unsigned char *)&tmss_count, 4);
 }
-#endif
+*/
