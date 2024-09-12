@@ -17,8 +17,6 @@ __license__ = "GPLv3"
 
 */
 
-#include "build/config.h"
-
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
