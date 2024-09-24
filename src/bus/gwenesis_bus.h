@@ -95,7 +95,7 @@ void power_on();
 void reset_emulation();
 void set_region();
 
-//void gwenesis_bus_save_state(fs_file_t *file);
-//void gwenesis_bus_load_state(fs_file_t *file);
+void gwenesis_bus_save_state(FILE *file);
+void gwenesis_bus_load_state(FILE *file);
 
 #endif

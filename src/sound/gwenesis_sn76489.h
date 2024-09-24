@@ -67,9 +67,7 @@ int gwenesis_SN76489_GetContextSize(void);
 void gwenesis_SN76489_Write(int data, int target);
 void gwenesis_SN76489_run(int target);
 
-/*
-void gwenesis_sn76489_save_state(fs_file_t *file);
-void gwenesis_sn76489_load_state(fs_file_t *file);
-*/
+void gwenesis_sn76489_save_state(FILE *file);
+void gwenesis_sn76489_load_state(FILE *file);
 
 #endif /* _GWENESIS_SN76489_H_ */

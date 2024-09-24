@@ -329,26 +329,26 @@ void OutZ80(register word Port, register byte Value) {;}
 void PatchZ80(register Z80 *R) {;}
 void DebugZ80(register Z80 *R) {;}
 
-/*void gwenesis_z80inst_save_state(fs_file_t *file) {
-    fs_write(file, (unsigned char *)&cpu, sizeof(Z80));
+void gwenesis_z80inst_save_state(FILE *file) {
+    fwrite((unsigned char *)&cpu, sizeof(Z80), 1, file);
 
-    fs_write(file, (unsigned char *)&bus_ack, 4);
-    fs_write(file, (unsigned char *)&reset, 4);
-    fs_write(file, (unsigned char *)&reset_once, 4);
-    fs_write(file, (unsigned char *)&zclk, 4);
-    fs_write(file, (unsigned char *)&initialized, 4);
-    fs_write(file, (unsigned char *)&Z80_BANK, 4);
-    fs_write(file, (unsigned char *)&current_timeslice, 4);
+    fwrite((unsigned char *)&bus_ack, 4, 1, file);
+    fwrite((unsigned char *)&reset, 4, 1, file);
+    fwrite((unsigned char *)&reset_once, 4, 1, file);
+    fwrite((unsigned char *)&zclk, 4, 1, file);
+    fwrite((unsigned char *)&initialized, 4, 1, file);
+    fwrite((unsigned char *)&Z80_BANK, 4, 1, file);
+    fwrite((unsigned char *)&current_timeslice, 4, 1, file);
 }
 
-void gwenesis_z80inst_load_state(fs_file_t *file) {
-    fs_read(file, (unsigned char *)&cpu, sizeof(Z80));
+void gwenesis_z80inst_load_state(FILE *file) {
+    fread((unsigned char *)&cpu, sizeof(Z80), 1, file);
 
-    fs_read(file, (unsigned char *)&bus_ack, 4);
-    fs_read(file, (unsigned char *)&reset, 4);
-    fs_read(file, (unsigned char *)&reset_once, 4);
-    fs_read(file, (unsigned char *)&zclk, 4);
-    fs_read(file, (unsigned char *)&initialized, 4);
-    fs_read(file, (unsigned char *)&Z80_BANK, 4);
-    fs_read(file, (unsigned char *)&current_timeslice, 4);
-}*/
+    fread((unsigned char *)&bus_ack, 4, 1, file);
+    fread((unsigned char *)&reset, 4, 1, file);
+    fread((unsigned char *)&reset_once, 4, 1, file);
+    fread((unsigned char *)&zclk, 4, 1, file);
+    fread((unsigned char *)&initialized, 4, 1, file);
+    fread((unsigned char *)&Z80_BANK, 4, 1, file);
+    fread((unsigned char *)&current_timeslice, 4, 1, file);
+}

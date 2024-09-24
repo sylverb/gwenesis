@@ -1276,41 +1276,34 @@ void gwenesis_vdp_render_line(int line)
 }
 
 
-//void gwenesis_vdp_gfx_save_state(fs_file_t *file) {
-  /*
-  SaveState* state;
-  state = saveGwenesisStateOpenForWrite("vdp_gfx");
-  saveGwenesisStateSetBuffer(state, "render_buffer", render_buffer, sizeof(render_buffer));
-  saveGwenesisStateSetBuffer(state, "sprite_buffer", sprite_buffer, sizeof(sprite_buffer));
-  saveGwenesisStateSet(state, "mode_h40", mode_h40);
-  saveGwenesisStateSet(state, "mode_pal", mode_pal);
-  saveGwenesisStateSet(state, "screen_width", screen_width);
-  saveGwenesisStateSet(state, "screen_height", screen_height);
-  saveGwenesisStateSet(state, "sprite_overflow", sprite_overflow);
-  saveGwenesisStateSet(state, "sprite_collision", sprite_collision);
-  saveGwenesisStateSet(state, "base_w", base_w);
-  saveGwenesisStateSet(state, "PlanA_firstcol", PlanA_firstcol);
-  saveGwenesisStateSet(state, "PlanA_lastcol", PlanA_lastcol);
-  saveGwenesisStateSet(state, "Window_firstcol", Window_firstcol);
-  saveGwenesisStateSet(state, "Window_lastcol", Window_lastcol);
-  */
-//}
+void gwenesis_vdp_gfx_save_state(FILE *file) {
+  fwrite((unsigned char *)render_buffer, sizeof(render_buffer), 1, file);
+  fwrite((unsigned char *)sprite_buffer, sizeof(sprite_buffer), 1, file);
+  fwrite((unsigned char *)&mode_h40, 4, 1, file);
+  fwrite((unsigned char *)&mode_pal, 4, 1, file);
+  fwrite((unsigned char *)&screen_width, 4, 1, file);
+  fwrite((unsigned char *)&screen_height, 4, 1, file);
+  fwrite((unsigned char *)&sprite_overflow, 4, 1, file);
+  fwrite((unsigned char *)&sprite_collision, 4, 1, file);
+  fwrite((unsigned char *)&base_w, 4, 1, file);
+  fwrite((unsigned char *)&PlanA_firstcol, 4, 1, file);
+  fwrite((unsigned char *)&PlanA_lastcol, 4, 1, file);
+  fwrite((unsigned char *)&Window_firstcol, 4, 1, file);
+  fwrite((unsigned char *)&Window_lastcol, 4, 1, file);
+}
 
-//void gwenesis_vdp_gfx_load_state(fs_file_t *file) {
-  /*
-    SaveState* state = saveGwenesisStateOpenForRead("vdp_gfx");
-    saveGwenesisStateGetBuffer(state, "render_buffer", render_buffer, sizeof(render_buffer));
-    saveGwenesisStateGetBuffer(state, "sprite_buffer", sprite_buffer, sizeof(sprite_buffer));
-    mode_h40 = saveGwenesisStateGet(state, "mode_h40");
-    mode_pal = saveGwenesisStateGet(state, "mode_pal");
-    screen_width = saveGwenesisStateGet(state, "screen_width");
-    screen_height = saveGwenesisStateGet(state, "screen_height");
-    sprite_overflow = saveGwenesisStateGet(state, "sprite_overflow");
-    sprite_collision = saveGwenesisStateGet(state, "sprite_collision");
-    base_w = saveGwenesisStateGet(state, "base_w");
-    PlanA_firstcol = saveGwenesisStateGet(state, "PlanA_firstcol");
-    PlanA_lastcol = saveGwenesisStateGet(state, "PlanA_lastcol");
-    Window_firstcol = saveGwenesisStateGet(state, "Window_firstcol");
-    Window_lastcol = saveGwenesisStateGet(state, "Window_lastcol");
-    */
-//}
+void gwenesis_vdp_gfx_load_state(FILE *file) {
+  fread((unsigned char *)render_buffer, sizeof(render_buffer), 1, file);
+  fread((unsigned char *)sprite_buffer, sizeof(sprite_buffer), 1, file);
+  fread((unsigned char *)&mode_h40, 4, 1, file);
+  fread((unsigned char *)&mode_pal, 4, 1, file);
+  fread((unsigned char *)&screen_width, 4, 1, file);
+  fread((unsigned char *)&screen_height, 4, 1, file);
+  fread((unsigned char *)&sprite_overflow, 4, 1, file);
+  fread((unsigned char *)&sprite_collision, 4, 1, file);
+  fread((unsigned char *)&base_w, 4, 1, file);
+  fread((unsigned char *)&PlanA_firstcol, 4, 1, file);
+  fread((unsigned char *)&PlanA_lastcol, 4, 1, file);
+  fread((unsigned char *)&Window_firstcol, 4, 1, file);
+  fread((unsigned char *)&Window_lastcol, 4, 1, file);
+}

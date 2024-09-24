@@ -224,14 +224,14 @@ void gwenesis_io_set_reg(unsigned int reg, unsigned int value) {
     return;
 }
 
-/*void gwenesis_io_save_state(fs_file_t *file) {
-    fs_write(file, button_state, sizeof(button_state));
-    fs_write(file, gwenesis_io_pad_state, sizeof(gwenesis_io_pad_state));
-    fs_write(file, io_reg, sizeof(io_reg));
+void gwenesis_io_save_state(FILE *file) {
+    fwrite(button_state, sizeof(button_state), 1, file);
+    fwrite(gwenesis_io_pad_state, sizeof(gwenesis_io_pad_state), 1, file);
+    fwrite(io_reg, sizeof(io_reg), 1, file);
 }
 
-void gwenesis_io_load_state(fs_file_t *file) {
-    fs_read(file, button_state, sizeof(button_state));
-    fs_read(file, gwenesis_io_pad_state, sizeof(gwenesis_io_pad_state));
-    fs_read(file, io_reg, sizeof(io_reg));
-}*/
+void gwenesis_io_load_state(FILE *file) {
+    fread(button_state, sizeof(button_state), 1, file);
+    fread(gwenesis_io_pad_state, sizeof(gwenesis_io_pad_state), 1, file);
+    fread(io_reg, sizeof(io_reg), 1, file);
+}

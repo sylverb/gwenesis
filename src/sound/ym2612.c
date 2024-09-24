@@ -2331,34 +2331,32 @@ int YM2612SaveContext(unsigned char *state)
 }
 #endif
 
-/*
-void gwenesis_ym2612_save_state(fs_file_t *file) {
-  fs_write(file, (unsigned char *)&ym2612, sizeof(ym2612));
+void gwenesis_ym2612_save_state(FILE *file) {
+  fwrite((unsigned char *)&ym2612, sizeof(ym2612), 1, file);
 
-  fs_write(file, (unsigned char *)&m2, 4);
-  fs_write(file, (unsigned char *)&c1, 4);
-  fs_write(file, (unsigned char *)&c2, 4);
-  fs_write(file, (unsigned char *)&mem, 4);
+  fwrite((unsigned char *)&m2, 4, 1, file);
+  fwrite((unsigned char *)&c1, 4, 1, file);
+  fwrite((unsigned char *)&c2, 4, 1, file);
+  fwrite((unsigned char *)&mem, 4, 1, file);
 
-  fs_write(file, (unsigned char *)out_fm, sizeof(out_fm));
+  fwrite((unsigned char *)out_fm, sizeof(out_fm), 1, file);
 
-  fs_write(file, (unsigned char *)&bitmask, 4);
+  fwrite((unsigned char *)&bitmask, 4, 1, file);
 
-  fs_write(file, (unsigned char *)OPNREGS, sizeof(OPNREGS));
+  fwrite((unsigned char *)OPNREGS, sizeof(OPNREGS), 1, file);
 }
 
-void gwenesis_ym2612_load_state(fs_file_t *file) {
-  fs_read(file, (unsigned char *)&ym2612, sizeof(ym2612));
+void gwenesis_ym2612_load_state(FILE *file) {
+  fread((unsigned char *)&ym2612, sizeof(ym2612), 1, file);
 
-  fs_read(file, (unsigned char *)&m2, 4);
-  fs_read(file, (unsigned char *)&c1, 4);
-  fs_read(file, (unsigned char *)&c2, 4);
-  fs_read(file, (unsigned char *)&mem, 4);
+  fread((unsigned char *)&m2, 4, 1, file);
+  fread((unsigned char *)&c1, 4, 1, file);
+  fread((unsigned char *)&c2, 4, 1, file);
+  fread((unsigned char *)&mem, 4, 1, file);
 
-  fs_read(file, (unsigned char *)out_fm, sizeof(out_fm));
+  fread((unsigned char *)out_fm, sizeof(out_fm), 1, file);
 
-  fs_read(file, (unsigned char *)&bitmask, 4);
+  fread((unsigned char *)&bitmask, 4, 1, file);
 
-  fs_read(file, (unsigned char *)OPNREGS, sizeof(OPNREGS));
+  fread((unsigned char *)OPNREGS, sizeof(OPNREGS), 1, file);
 }
-*/

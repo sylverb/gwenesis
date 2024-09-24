@@ -25,21 +25,6 @@ __license__ = "GPLv3"
 #include <string.h>
 #include <stdbool.h>
 
-typedef struct SaveState SaveState;
-
-bool initLoadGwenesisState(unsigned char *srcBuffer);
-//int saveGwenesisState(fs_file_t *file);
-//int loadGwenesisState(fs_file_t *file);
-
-SaveState* saveGwenesisStateOpenForRead(const char* fileName);
-SaveState* saveGwenesisStateOpenForWrite(const char* fileName);
-
-int saveGwenesisStateGet(SaveState* state, const char* tagName);
-void saveGwenesisStateSet(SaveState* state, const char* tagName, int value);
-
-void saveGwenesisStateGetBuffer(SaveState* state, const char* tagName, void* buffer, int length);
-void saveGwenesisStateSetBuffer(SaveState* state, const char* tagName, void* buffer, int length);
-
-void gwenesis_save_state();
-void gwenesis_load_state();
+void gwenesis_save_state(FILE *file);
+void gwenesis_load_state(FILE *file);
 #endif

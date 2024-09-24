@@ -525,8 +525,8 @@
 /* =========================== UTILITY FUNCTIONS ========================== */
 /* ======================================================================== */
 
-//void gwenesis_m68k_save_state(fs_file_t *file);
-//void gwenesis_m68k_load_state(fs_file_t *file);
+void gwenesis_m68k_save_state(FILE *file);
+void gwenesis_m68k_load_state(FILE *file);
 
 /* ----------------------------- Read / Write ----------------------------- */
 
