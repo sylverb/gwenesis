@@ -85,7 +85,7 @@ enum gwenesis_bus_pad_button
     PAD_S
 };
 
-#if GNW_TARGET_MARIO != 0 | GNW_TARGET_ZELDA != 0
+#ifdef TARGET_GNW
 void load_cartridge();
 #else
 void load_cartridge(unsigned char *buffer, size_t size);

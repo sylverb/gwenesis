@@ -33,7 +33,7 @@ __license__ = "GPLv3"
 #include "gwenesis_sn76489.h"
 #include "gwenesis_savestate.h"
 
-#if GNW_TARGET_MARIO !=0 || GNW_TARGET_ZELDA!=0
+#ifdef TARGET_GNW
   #pragma GCC optimize("Ofast")
 #endif
 
@@ -59,7 +59,7 @@ void bus_log(const char *subs, const char *fmt, ...) {
 #endif
 
 // Setup M68k memories ROM & RAM
-#if GNW_TARGET_MARIO != 0 | GNW_TARGET_ZELDA != 0
+#ifdef TARGET_GNW
 
 #include "rom_manager.h"
 unsigned char *M68K_RAM=(void *)(uint32_t)(0); // 68K RAM 
@@ -86,7 +86,7 @@ int tmss_count = 0;
  ******************************************************************************/
 
 
-#if GNW_TARGET_MARIO != 0 | GNW_TARGET_ZELDA != 0
+ #ifdef TARGET_GNW
 
 void load_cartridge()
 {

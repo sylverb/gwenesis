@@ -28,7 +28,7 @@ __license__ = "GPLv3"
 #include "gwenesis_sn76489.h"
 #include "gwenesis_savestate.h"
 
-#if GNW_TARGET_MARIO !=0 || GNW_TARGET_ZELDA!=0
+#ifdef TARGET_GNW
   #pragma GCC optimize("Ofast")
 #endif
 

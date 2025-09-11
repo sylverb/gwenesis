@@ -28,11 +28,11 @@ __license__ = "GPLv3"
 
 //#include <assert.h>
 
-#if GNW_TARGET_MARIO !=0 || GNW_TARGET_ZELDA!=0
+#ifdef TARGET_GNW
   #pragma GCC optimize("Ofast")
 #endif
 
-#if GNW_TARGET_MARIO != 0 | GNW_TARGET_ZELDA != 0
+#ifdef TARGET_GNW
 
 typedef unsigned char uint8_t;
 typedef unsigned short uint16_t;
@@ -1028,7 +1028,7 @@ void gwenesis_vdp_render_line(int line)
     return;
 
 
-#if GNW_TARGET_MARIO != 0 | GNW_TARGET_ZELDA != 0
+    #ifdef TARGET_GNW
   
   screen_buffer_line = &screen_buffer[line * SCREEN_WIDTH];
 
@@ -1084,7 +1084,7 @@ void gwenesis_vdp_render_line(int line)
   else
     draw_sprites_over_planes(line);
 
-#if GNW_TARGET_MARIO != 0 | GNW_TARGET_ZELDA != 0
+#ifdef TARGET_GNW
 
   if (screen_width == 320) {
     /* Mode Highlight/shadow is enabled */

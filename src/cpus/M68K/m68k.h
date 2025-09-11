@@ -151,7 +151,7 @@
 
 // 16/32 bits acces to RAM/ROM
 
-#if GNW_TARGET_MARIO != 0 | GNW_TARGET_ZELDA != 0
+#ifdef TARGET_GNW
 
 	extern const unsigned char *ROM_DATA;
 	extern unsigned char *M68K_RAM;
@@ -165,7 +165,7 @@
 #define FETCH16ROM(A) ((*(unsigned short *)&ROM_DATA[(A)]))
 #define FETCH32ROM(A) ( (*(unsigned int *)&ROM_DATA[(A)] << 16) | (*(unsigned int *)&ROM_DATA[(A)] >> 16) )
 
-#if GNW_TARGET_MARIO !=0 || GNW_TARGET_ZELDA!=0
+#ifdef TARGET_GNW
 
 /* Direct access to ITCRAM as M68KRAM on STM32H7 mapped at 0x0 !!  */
 #define FETCH8RAM(A)    (*(unsigned char  *)(((A)&0XFFFF) ^ 1))

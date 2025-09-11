@@ -31,8 +31,8 @@ __license__ = "GPLv3"
 
 #include <assert.h>
 
-#if GNW_TARGET_MARIO !=0 || GNW_TARGET_ZELDA!=0
-  #pragma GCC optimize("Ofast")
+#ifdef TARGET_GNW
+#pragma GCC optimize("Ofast")
 #endif
 
 #define VDP_MEM_DISABLE_LOGGING 1
@@ -61,7 +61,7 @@ void vdpm_log(const char *subs, const char *fmt, ...) {
 /* Setup VDP Memories */
 
 
-#if GNW_TARGET_MARIO != 0 | GNW_TARGET_ZELDA != 0
+#ifdef TARGET_GNW
   static uint8_t vram[1024*64];
   unsigned char* VRAM = vram;
 #else

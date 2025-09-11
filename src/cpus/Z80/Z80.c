@@ -13,7 +13,7 @@
 /**     changes to this file.                               **/
 /*************************************************************/
 
-#if GNW_TARGET_MARIO !=0 || GNW_TARGET_ZELDA !=0
+#ifdef TARGET_GNW
   #pragma GCC optimize("Ofast")
 #endif
 
