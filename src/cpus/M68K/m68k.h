@@ -467,8 +467,8 @@ extern unsigned int m68k_get_reg(m68k_register_t reg);
 extern void m68k_set_reg(m68k_register_t reg, unsigned int value);
 
 /* Load/Save state of CPU */
-extern void gwenesis_m68k_save_state();
-extern void gwenesis_m68k_load_state();
+extern void gwenesis_m68k_save_state(FILE *file);
+extern void gwenesis_m68k_load_state(FILE *file);
 
 /* ======================================================================== */
 /* ============================== END OF FILE ============================= */
