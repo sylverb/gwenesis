@@ -28,6 +28,11 @@ __license__ = "GPLv3"
 #define MAX_RAM_SIZE 0x10000
 #define MAX_Z80_RAM_SIZE 8192
 
+/* Cartridge SRAM support */
+#define MAX_SRAM_SIZE  16*1024 // 0x10000   /* 64 KB max (standard) */
+/* Byte index mask for SRAM[] (odd-only uses packed index with same mask). */
+#define GWENESIS_SRAM_MASK (MAX_SRAM_SIZE - 1)
+
 // NTSC PAL timings
 #define MCLOCK_PAL 53203424
 #define MCLOCK_NTSC 53693175
@@ -70,7 +75,9 @@ enum mapped_address
     Z80_CTRL,
     TMSS_CTRL,
     VDP_ADDR,
-    RAM_ADDR
+    RAM_ADDR,
+    SRAM_ADDR,
+    SRAM_CTRL
 };
 
 enum gwenesis_bus_pad_button
@@ -94,6 +101,15 @@ void load_cartridge(unsigned char *buffer, size_t size);
 void power_on();
 void reset_emulation();
 void set_region();
+
+/* SRAM */
+extern unsigned char GWENESIS_SRAM[MAX_SRAM_SIZE];
+extern int gwenesis_sram_enabled;          /* 1 = cartridge has SRAM (from ROM header) */
+extern int gwenesis_sram_odd_only;         /* 1 = SRAM mapped on odd bytes only (e.g. Landstalker) */
+extern int gwenesis_sram_active;           /* runtime: 1 = SRAM selected via reg 0xA130F1 */
+extern int gwenesis_sram_write_protect;    /* runtime: 1 = SRAM write-protected via reg 0xA130F1 */
+extern unsigned int gwenesis_sram_start;   /* first mapped address (always even) */
+extern unsigned int gwenesis_sram_end;     /* last  mapped address */
 
 void gwenesis_bus_save_state(FILE *file);
 void gwenesis_bus_load_state(FILE *file);

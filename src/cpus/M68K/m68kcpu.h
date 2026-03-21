@@ -861,7 +861,6 @@ INLINE uint m68ki_read_8(uint address)
 
   m68ki_set_fc(FLAG_S | m68ki_get_address_space()) /* auto-disable (see m68kcpu.h) */
 
-	if (ADDRESS_68K(address) <  0x800000) return FETCH8ROM(ADDRESS_68K(address));
 	if (ADDRESS_68K(address) >= 0xFF0000) return FETCH8RAM(ADDRESS_68K(address));
 	return m68k_read_memory_8(ADDRESS_68K(address));
 
@@ -872,7 +871,6 @@ INLINE uint m68ki_read_16(uint address)
 
   m68ki_set_fc(FLAG_S | m68ki_get_address_space()) /* auto-disable (see m68kcpu.h) */
  
- 	if (ADDRESS_68K(address) <  0x800000) return FETCH16ROM(ADDRESS_68K(address));
 	if (ADDRESS_68K(address) >= 0xFF0000) return FETCH16RAM(ADDRESS_68K(address));
 	return m68k_read_memory_16(ADDRESS_68K(address));
 
@@ -882,7 +880,7 @@ INLINE uint m68ki_read_32(uint address)
 {
 
   m68ki_set_fc(FLAG_S | m68ki_get_address_space()) /* auto-disable (see m68kcpu.h) */
-	if (ADDRESS_68K(address) <  0x800000) return FETCH32ROM(ADDRESS_68K(address));
+
 	if (ADDRESS_68K(address) >= 0xFF0000) return FETCH32RAM(ADDRESS_68K(address));
 	return m68k_read_memory_32(ADDRESS_68K(address));
 }

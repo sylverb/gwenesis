@@ -32,8 +32,10 @@ __license__ = "GPLv3"
 #include "gwenesis_vdp.h"
 #include "gwenesis_sn76489.h"
 #include "gwenesis_savestate.h"
+#include "gwenesis_sram.h"
 
 #ifdef TARGET_GNW
+#include "gw_malloc.h"
   #pragma GCC optimize("Ofast")
 #endif
 
@@ -62,7 +64,7 @@ void bus_log(const char *subs, const char *fmt, ...) {
 #ifdef TARGET_GNW
 
 #include "rom_manager.h"
-unsigned char *M68K_RAM=(void *)(uint32_t)(0); // 68K RAM 
+unsigned char *M68K_RAM; // M68K RAM (64KB)
 #else
 
 unsigned char ROM_DATA[MAX_ROM_SIZE]; // 68K Main Program (uncompressed)
@@ -74,6 +76,15 @@ unsigned char M68K_RAM[MAX_RAM_SIZE];    // 68K RAM
 unsigned char ZRAM[MAX_Z80_RAM_SIZE]; // Z80 RAM
 unsigned char TMSS[0x4];
 extern unsigned short gwenesis_vdp_status;
+
+/* Cartridge SRAM — static buffer in normal RAM (not ITCRAM which is at 0x0) */
+unsigned char GWENESIS_SRAM[MAX_SRAM_SIZE];
+int           gwenesis_sram_enabled      = 0; // 1 if the cartridge has SRAM (from ROM header)
+int           gwenesis_sram_odd_only     = 0; // 1 = data on odd bytes only (e.g. Landstalker)
+int           gwenesis_sram_active       = 0; // runtime: register 0xA130F1 bit0 (1=SRAM, 0=ROM)
+int           gwenesis_sram_write_protect= 0; // runtime: register 0xA130F1 bit1 (1=read-only)
+unsigned int  gwenesis_sram_start        = 0; // SRAM start address, forced even (from ROM header)
+unsigned int  gwenesis_sram_end          = 0; // SRAM end   address (from ROM header)
 
 // TMSS
 int tmss_state = 0;
@@ -91,6 +102,7 @@ int tmss_count = 0;
 void load_cartridge()
 {
     // Clear all volatile memory
+    M68K_RAM=itc_malloc(MAX_RAM_SIZE); // 68K RAM 
     memset(M68K_RAM, 0, MAX_RAM_SIZE);
     memset(ZRAM, 0, MAX_Z80_RAM_SIZE);
 
@@ -101,6 +113,59 @@ void load_cartridge()
 
     set_region();
 
+    /* ------ SRAM detection from ROM header ------ */
+    /*
+     * Mega Drive ROM header (big-endian):
+     *   0x1B0  : "RA" magic (0x52 0x41) -> SRAM present
+     *   0x1B2  : type byte  (0xF8 = even+odd, 0xF9 = odd bytes only)
+     *                        bit 3 of byte at 0x1B2 set -> byte-wide (odd only)
+     *   0x1B4  : 4 bytes SRAM start address
+     *   0x1B8  : 4 bytes SRAM end   address
+     */
+    gwenesis_sram_enabled  = 0;
+    gwenesis_sram_odd_only = 0;
+    gwenesis_sram_active   = 0;
+    gwenesis_sram_write_protect = 0;
+    memset(GWENESIS_SRAM, 0x00, MAX_SRAM_SIZE);
+
+    unsigned char flag_hi  = FETCH8ROM(0x1B0);
+    unsigned char flag_lo  = FETCH8ROM(0x1B1);
+    unsigned char sram_type = FETCH8ROM(0x1B2);
+
+    if (flag_hi == 0x52 && flag_lo == 0x41) { /* "RA" */
+
+        /* Odd-only (byte-wide SRAM on D0-D7): type byte has bit 3 set, e.g. 0xF9 */
+        gwenesis_sram_odd_only = (sram_type & 0x08) ? 1 : 0;
+
+        gwenesis_sram_start = ((unsigned int)FETCH8ROM(0x1B4) << 24) |
+                     ((unsigned int)FETCH8ROM(0x1B5) << 16) |
+                     ((unsigned int)FETCH8ROM(0x1B6) <<  8) |
+                      (unsigned int)FETCH8ROM(0x1B7);
+        gwenesis_sram_end   = ((unsigned int)FETCH8ROM(0x1B8) << 24) |
+                     ((unsigned int)FETCH8ROM(0x1B9) << 16) |
+                     ((unsigned int)FETCH8ROM(0x1BA) <<  8) |
+                      (unsigned int)FETCH8ROM(0x1BB);
+
+        /* Force start to even boundary so address math is consistent */
+        gwenesis_sram_start &= ~1u;
+
+        /* Actual number of bytes in our SRAM[] array:
+         * odd-only -> only odd addresses carry data, so effective entries = range/2 */
+        unsigned int addr_range = gwenesis_sram_end - gwenesis_sram_start + 1;
+        unsigned int sram_size  = gwenesis_sram_odd_only ? (addr_range / 2) : addr_range;
+        if (sram_size > MAX_SRAM_SIZE) sram_size = MAX_SRAM_SIZE;
+
+        gwenesis_sram_enabled = 1;
+        /* SRAM is active by default — old games (pre-1993, e.g. Landstalker)
+         * never write to 0xA130F1; they expect SRAM to be always mapped.
+         * Games that use the register will explicitly set/clear gwenesis_sram_active. */
+        gwenesis_sram_active  = 1;
+        printf("SRAM detected: start=0x%06X end=0x%06X size=%d bytes mode=%s\n",
+               gwenesis_sram_start, gwenesis_sram_end, sram_size,
+               gwenesis_sram_odd_only ? "odd-only" : "full");
+    } else {
+        printf("No SRAM detected in ROM header\n");
+    }
 }
 #else
 
@@ -130,6 +195,44 @@ void load_cartridge(unsigned char *buffer, size_t size)
 
 
     set_region();
+
+    /* ------ SRAM detection from ROM header ------ */
+    gwenesis_sram_enabled  = 0;
+    gwenesis_sram_odd_only = 0;
+    gwenesis_sram_active   = 0;
+    gwenesis_sram_write_protect = 0;
+    memset(GWENESIS_SRAM, 0x00, MAX_SRAM_SIZE);
+
+    if (ROM_DATA[0x1B0] == 0x52 && ROM_DATA[0x1B1] == 0x41) { /* "RA" */
+        unsigned char sram_type = ROM_DATA[0x1B2];
+        gwenesis_sram_odd_only = (sram_type & 0x08) ? 1 : 0;
+
+        gwenesis_sram_start = ((unsigned int)ROM_DATA[0x1B4] << 24) |
+                     ((unsigned int)ROM_DATA[0x1B5] << 16) |
+                     ((unsigned int)ROM_DATA[0x1B6] <<  8) |
+                      (unsigned int)ROM_DATA[0x1B7];
+        gwenesis_sram_end   = ((unsigned int)ROM_DATA[0x1B8] << 24) |
+                     ((unsigned int)ROM_DATA[0x1B9] << 16) |
+                     ((unsigned int)ROM_DATA[0x1BA] <<  8) |
+                      (unsigned int)ROM_DATA[0x1BB];
+
+        gwenesis_sram_start &= ~1u;  /* force even boundary */
+
+        unsigned int addr_range = gwenesis_sram_end - gwenesis_sram_start + 1;
+        unsigned int sram_size  = gwenesis_sram_odd_only ? (addr_range / 2) : addr_range;
+        if (sram_size > MAX_SRAM_SIZE) sram_size = MAX_SRAM_SIZE;
+
+        gwenesis_sram_enabled = 1;
+        /* SRAM is active by default — old games (pre-1993, e.g. Landstalker)
+         * never write to 0xA130F1; they expect SRAM to be always mapped.
+         * Games that use the register will explicitly set/clear gwenesis_sram_active. */
+        gwenesis_sram_active  = 1;
+        printf("SRAM detected: start=0x%06X end=0x%06X size=%d bytes mode=%s\n",
+               gwenesis_sram_start, gwenesis_sram_end, sram_size,
+               gwenesis_sram_odd_only ? "odd-only" : "full");
+    } else {
+        printf("No SRAM detected in ROM header\n");
+    }
 }
 
 #endif
@@ -317,6 +420,28 @@ static inline unsigned int gwenesis_bus_map_z80_address(unsigned int address) {
   }
 }
 
+/* SRAM-aware data read macros used only in gwenesis_bus_read_memory_*.
+ * These replace FETCH8ROM/16ROM/32ROM in the case ROM_ADDR: handlers so that
+ * reads to the SRAM address window return SRAM data instead of flash.
+ * Opcode fetches (pcrelative/immediate) keep using FETCH*ROM directly. */
+ static inline unsigned int fetch8rom_data(unsigned int a) {
+  if (gwenesis_sram_active && a >= gwenesis_sram_start && a <= gwenesis_sram_end) {
+      if (gwenesis_sram_odd_only)
+          return (a & 1) ? GWENESIS_SRAM[((a - gwenesis_sram_start) >> 1) & GWENESIS_SRAM_MASK] : 0xFF;
+      return GWENESIS_SRAM[(a - gwenesis_sram_start) & GWENESIS_SRAM_MASK];
+  }
+  return FETCH8ROM(a);
+}
+static inline unsigned int fetch16rom_data(unsigned int a) {
+  if (gwenesis_sram_active && a >= gwenesis_sram_start && a <= gwenesis_sram_end) {
+      if (gwenesis_sram_odd_only)
+          return 0xFF00 | GWENESIS_SRAM[((a - gwenesis_sram_start) >> 1) & GWENESIS_SRAM_MASK];
+      unsigned int off = (a - gwenesis_sram_start) & GWENESIS_SRAM_MASK;
+      return (GWENESIS_SRAM[off] << 8) | GWENESIS_SRAM[off + 1];
+  }
+  return FETCH16ROM(a);
+}
+
 /******************************************************************************
  *
  *   IO memory address mapper
@@ -325,6 +450,10 @@ static inline unsigned int gwenesis_bus_map_z80_address(unsigned int address) {
  ******************************************************************************/
 static inline unsigned int gwenesis_bus_map_io_address(unsigned int address)
 {
+  /* 0xA130F1 : SRAM control register (Genesis standard) */
+  if (gwenesis_sram_enabled && (address & 0xFFFF00) == 0xA13000)  /* 0xA130xx range */
+    return SRAM_CTRL;
+
   unsigned int range = (address & 0x1000) ;
   switch (range) {
   case 0:      return IO_CTRL;
@@ -349,6 +478,13 @@ static inline
 unsigned int gwenesis_bus_map_address(unsigned int address) {
   // Mask address page
   unsigned int range = (address & 0xFF0000) >> 16;
+
+  /* SRAM must be checked BEFORE the ROM catch-all (range < 0x80),
+   * because SRAM lives at 0x200000-0x3FFFFF which is inside that range. */
+  if (gwenesis_sram_active &&
+      address >= gwenesis_sram_start &&
+      address <= gwenesis_sram_end)
+    return SRAM_ADDR;
 
   // Check mask and select memory type
   if (range < 0x80) //        ROM ADDRESS 0x000000 - 0x3FFFFF
@@ -385,10 +521,29 @@ static inline unsigned int gwenesis_bus_read_memory_8(unsigned int address) {
     return gwenesis_vdp_read_memory_8(address);
 
   case ROM_ADDR:
-    return FETCH8ROM(address);
+    return fetch8rom_data(address);
+
+  case SRAM_ADDR: {
+    unsigned int val;
+    if (gwenesis_sram_odd_only) {
+      if (address & 1) {
+        val = GWENESIS_SRAM[((address - gwenesis_sram_start) >> 1) & GWENESIS_SRAM_MASK];
+      } else {
+        val = 0xFF;
+      }
+    } else {
+      val = GWENESIS_SRAM[(address - gwenesis_sram_start) & GWENESIS_SRAM_MASK];
+    }
+
+    return val;
+  }
 
   case RAM_ADDR:
     return FETCH8RAM(address);
+
+  case SRAM_CTRL:
+    /* 0xA130F1: return current SRAM control register state */
+    return gwenesis_sram_active | (gwenesis_sram_write_protect << 1);
 
   case IO_CTRL:
     return gwenesis_io_read_ctrl(address & 0x1F);
@@ -435,7 +590,20 @@ static inline unsigned int gwenesis_bus_read_memory_16(unsigned int address) {
     return FETCH16RAM(address);
 
   case ROM_ADDR:
-    return FETCH16ROM(address);
+    return fetch16rom_data(address);
+
+  case SRAM_ADDR: {
+    if (gwenesis_sram_odd_only) {
+      /* Odd byte = low byte of word, even byte (high) = 0xFF (bus open) */
+      unsigned int idx = ((address - gwenesis_sram_start) >> 1) & GWENESIS_SRAM_MASK;
+      return 0xFF00 | GWENESIS_SRAM[idx];
+    }
+    unsigned int off = (address - gwenesis_sram_start) & GWENESIS_SRAM_MASK;
+    return (GWENESIS_SRAM[off] << 8) | GWENESIS_SRAM[off + 1];
+  }
+
+  case SRAM_CTRL:
+    return gwenesis_sram_active | (gwenesis_sram_write_protect << 1);
 
   case IO_CTRL:
     return gwenesis_io_read_ctrl(address & 0x1F);
@@ -488,6 +656,30 @@ static inline void gwenesis_bus_write_memory_8(unsigned int address,
 
   case RAM_ADDR:
     WRITE8RAM(address, value);
+    return;
+
+  case SRAM_ADDR:
+    if (gwenesis_sram_write_protect) return;
+    if (gwenesis_sram_odd_only) {
+      /* Byte-wide SRAM: only odd addresses are writable */
+      if (address & 1) {
+        unsigned int idx = ((address - gwenesis_sram_start) >> 1) & GWENESIS_SRAM_MASK;
+        GWENESIS_SRAM[idx] = value & 0xFF;
+        gwenesis_sram_mark_dirty();
+      }
+    } else {
+      unsigned int off = (address - gwenesis_sram_start) & GWENESIS_SRAM_MASK;
+      GWENESIS_SRAM[off] = value & 0xFF;
+      gwenesis_sram_mark_dirty();
+    }
+    return;
+
+  case SRAM_CTRL:
+    /* 0xA130F1 SRAM control register:
+     * bit 0 = 1 -> SRAM active (ROM no longer responds to gwenesis_sram_start..gwenesis_sram_end)
+     * bit 1 = 1 -> write protect */
+    gwenesis_sram_active        = value & 0x01;
+    gwenesis_sram_write_protect = (value >> 1) & 0x01;
     return;
 
   case IO_CTRL:
@@ -550,9 +742,29 @@ static inline void gwenesis_bus_write_memory_16(unsigned int address,
     WRITE16RAM(address, value);
     return;
 
+  case SRAM_ADDR: {
+    if (gwenesis_sram_write_protect) return;
+    if (gwenesis_sram_odd_only) {
+      /* M68K 16-bit write to even address: high byte→even (ignored), low byte→odd (data) */
+      unsigned int idx = ((address - gwenesis_sram_start) >> 1) & GWENESIS_SRAM_MASK;
+      GWENESIS_SRAM[idx] = value & 0xFF;
+    } else {
+      unsigned int off = (address - gwenesis_sram_start) & GWENESIS_SRAM_MASK;
+      GWENESIS_SRAM[off]     = (value >> 8) & 0xFF;
+      GWENESIS_SRAM[off + 1] = value & 0xFF;
+    }
+    gwenesis_sram_mark_dirty();
+    return;
+  }
+
   case Z80_RAM_ADDR:
   case Z80_RAM_ADDR1K:
     ZRAM[address & 0X1FFF]= value >> 8;
+    return;
+
+  case SRAM_CTRL:
+    gwenesis_sram_active        = (value >> 8) & 0x01;
+    gwenesis_sram_write_protect = (value >> 9) & 0x01;
     return;
 
   case IO_CTRL:
@@ -591,7 +803,6 @@ static inline void gwenesis_bus_write_memory_16(unsigned int address,
  ******************************************************************************/
 unsigned int m68k_read_memory_8(unsigned int address)
 {
-      //  if ((address &  0xFF0000 ) == 0xFF0000) return FETCH8RAM(address);
     return gwenesis_bus_read_memory_8(address);
 }
 
@@ -603,7 +814,6 @@ unsigned int m68k_read_memory_8(unsigned int address)
  ******************************************************************************/
  unsigned int m68k_read_memory_16(unsigned int address)
 {
-     //   if ((address &  0xFF0000 ) == 0xFF0000) return FETCH16RAM(address);
     return gwenesis_bus_read_memory_16(address);
 }
 
@@ -681,6 +891,11 @@ void gwenesis_bus_save_state(FILE *file) {
   fwrite((unsigned char *)TMSS, sizeof(TMSS), 1, file);
   fwrite((unsigned char *)&tmss_state, 4, 1, file);
   fwrite((unsigned char *)&tmss_count, 4, 1, file);
+  /* SRAM */
+  if (gwenesis_sram_enabled) {
+    fwrite((unsigned char *)&gwenesis_sram_active,         4, 1, file);
+    fwrite((unsigned char *)&gwenesis_sram_write_protect,  4, 1, file);
+  }
 }
 
 void gwenesis_bus_load_state(FILE *file) {
@@ -689,4 +904,9 @@ void gwenesis_bus_load_state(FILE *file) {
   fread((unsigned char *)TMSS, sizeof(TMSS), 1, file);
   fread((unsigned char *)&tmss_state, 4, 1, file);
   fread((unsigned char *)&tmss_count, 4, 1, file);
+  /* SRAM */
+  if (gwenesis_sram_enabled) {
+    fread((unsigned char *)&gwenesis_sram_active,         4, 1, file);
+    fread((unsigned char *)&gwenesis_sram_write_protect,  4, 1, file);
+  }
 }
