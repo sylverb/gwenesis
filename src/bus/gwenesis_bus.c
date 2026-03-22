@@ -86,6 +86,14 @@ int           gwenesis_sram_write_protect= 0; // runtime: register 0xA130F1 bit1
 unsigned int  gwenesis_sram_start        = 0; // SRAM start address, forced even (from ROM header)
 unsigned int  gwenesis_sram_end          = 0; // SRAM end   address (from ROM header)
 
+/* SSF2 Mapper
+ * 8 slots of 512 KB cover the 4 MB logical ROM space (0x000000-0x3FFFFF).
+ * Slot 0 is always physical bank 0 (fixed). Slots 1-7 are remappable via
+ * byte writes to 0xA130F3, 0xA130F5, ..., 0xA130FF.
+ */
+int           gwenesis_ssf2_enabled = 0;
+unsigned char gwenesis_ssf2_banks[8];   /* logical slot → physical 512 KB page */
+
 // TMSS
 int tmss_state = 0;
 int tmss_count = 0;
@@ -166,7 +174,24 @@ void load_cartridge()
     } else {
         printf("No SRAM detected in ROM header\n");
     }
-}
+
+    /* ------ SSF2 mapper detection ------ */
+    /*
+     * Any ROM larger than 4 MB requires the Super Street Fighter II
+     * bankswitching mapper.  Initialise all slots to the identity mapping so
+     * that normal (non-banked) ROM access works unchanged until the game writes
+     * to the bank registers at 0xA130F3..0xA130FF.
+     * Slot 0 (0x000000-0x07FFFF) is always fixed to physical bank 0.
+     */
+     gwenesis_ssf2_enabled = 0;
+     for (int i = 0; i < 8; i++) gwenesis_ssf2_banks[i] = (unsigned char)i;
+
+     if (ROM_DATA_LENGTH > 0x400000) {
+         gwenesis_ssf2_enabled = 1;
+         printf("SSF2 mapper enabled (ROM size: %d KB)\n",
+               ROM_DATA_LENGTH / 1024);
+     }
+ }
 #else
 
 void load_cartridge(unsigned char *buffer, size_t size)
@@ -232,6 +257,23 @@ void load_cartridge(unsigned char *buffer, size_t size)
                gwenesis_sram_odd_only ? "odd-only" : "full");
     } else {
         printf("No SRAM detected in ROM header\n");
+    }
+
+    /* ------ SSF2 mapper detection ------ */
+    /*
+     * Any ROM larger than 4 MB requires the Super Street Fighter II
+     * bankswitching mapper.  Initialise all slots to the identity mapping so
+     * that normal (non-banked) ROM access works unchanged until the game writes
+     * to the bank registers at 0xA130F3..0xA130FF.
+     * Slot 0 (0x000000-0x07FFFF) is always fixed to physical bank 0.
+     */
+    gwenesis_ssf2_enabled = 0;
+    for (int i = 0; i < 8; i++) gwenesis_ssf2_banks[i] = (unsigned char)i;
+
+    if (1) {//size > 0x400000) {
+        gwenesis_ssf2_enabled = 1;
+        printf("SSF2 mapper enabled (ROM size: %zu bytes / %zu KB)\n",
+               size, size / 1024);
     }
 }
 
@@ -420,11 +462,12 @@ static inline unsigned int gwenesis_bus_map_z80_address(unsigned int address) {
   }
 }
 
-/* SRAM-aware data read macros used only in gwenesis_bus_read_memory_*.
- * These replace FETCH8ROM/16ROM/32ROM in the case ROM_ADDR: handlers so that
- * reads to the SRAM address window return SRAM data instead of flash.
- * Opcode fetches (pcrelative/immediate) keep using FETCH*ROM directly. */
- static inline unsigned int fetch8rom_data(unsigned int a) {
+/* SRAM-aware data read helpers used only in gwenesis_bus_read_memory_*.
+ * These replace FETCH8ROM/16ROM in the ROM_ADDR: handlers so that reads to
+ * the SRAM address window return SRAM data instead of ROM.
+ * SSF2 translation is handled inside the FETCH*ROM macros (m68k.h),
+ * so these helpers just add the SRAM overlay on top. */
+static inline unsigned int fetch8rom_data(unsigned int a) {
   if (gwenesis_sram_active && a >= gwenesis_sram_start && a <= gwenesis_sram_end) {
       if (gwenesis_sram_odd_only)
           return (a & 1) ? GWENESIS_SRAM[((a - gwenesis_sram_start) >> 1) & GWENESIS_SRAM_MASK] : 0xFF;
@@ -450,9 +493,20 @@ static inline unsigned int fetch16rom_data(unsigned int a) {
  ******************************************************************************/
 static inline unsigned int gwenesis_bus_map_io_address(unsigned int address)
 {
-  /* 0xA130F1 : SRAM control register (Genesis standard) */
-  if (gwenesis_sram_enabled && (address & 0xFFFF00) == 0xA13000)  /* 0xA130xx range */
-    return SRAM_CTRL;
+  /* 0xA130xx range: cartridge registers (SRAM control + SSF2 bankswitching) */
+  if ((address & 0xFFFF00) == 0xA13000) {
+    /* 0xA130F2-0xA130FF: SSF2 bankswitching registers (slots 1-7)
+     * Written as byte to odd address: 0xA130F3, F5, F7, F9, FB, FD, FF
+     * We also accept even-address word writes (bus writes high byte to even). */
+    if (gwenesis_ssf2_enabled && address >= 0xA130F2 && address <= 0xA130FF)
+      return SSF2_BANK_CTRL;
+
+    /* 0xA130F0/F1: SRAM control register */
+    if (gwenesis_sram_enabled)
+      return SRAM_CTRL;
+
+    return NONE;
+  }
 
   unsigned int range = (address & 0x1000) ;
   switch (range) {
@@ -682,6 +736,17 @@ static inline void gwenesis_bus_write_memory_8(unsigned int address,
     gwenesis_sram_write_protect = (value >> 1) & 0x01;
     return;
 
+  case SSF2_BANK_CTRL:
+    /* SSF2 bankswitching: byte write to 0xA130F3, F5, F7, F9, FB, FD, FF
+     * selects which physical 512 KB page maps into logical slots 1-7.
+     * Slot 0 (0x000000-0x07FFFF) is always fixed to page 0. */
+    if (gwenesis_ssf2_enabled) {
+      unsigned int slot = (address - 0xA130F0) >> 1;  /* 1..7 */
+      if (slot >= 1 && slot <= 7)
+        gwenesis_ssf2_banks[slot] = value & 0x0F;     /* 4 bits = up to 16 physical pages */
+    }
+    return;
+
   case IO_CTRL:
     gwenesis_io_write_ctrl(address & 0x1F, value);
     return;
@@ -765,6 +830,16 @@ static inline void gwenesis_bus_write_memory_16(unsigned int address,
   case SRAM_CTRL:
     gwenesis_sram_active        = (value >> 8) & 0x01;
     gwenesis_sram_write_protect = (value >> 9) & 0x01;
+    return;
+
+  case SSF2_BANK_CTRL:
+    /* 16-bit write: the bank number is in the low byte (M68K big-endian).
+     * The odd address register captures value & 0xFF. */
+    if (gwenesis_ssf2_enabled) {
+      unsigned int slot = (address - 0xA130F0) >> 1;
+      if (slot >= 1 && slot <= 7)
+        gwenesis_ssf2_banks[slot] = (value & 0xFF) & 0x0F;
+    }
     return;
 
   case IO_CTRL:
@@ -896,6 +971,10 @@ void gwenesis_bus_save_state(FILE *file) {
     fwrite((unsigned char *)&gwenesis_sram_active,         4, 1, file);
     fwrite((unsigned char *)&gwenesis_sram_write_protect,  4, 1, file);
   }
+  /* SSF2 mapper */
+  if (gwenesis_ssf2_enabled) {
+    fwrite((unsigned char *)gwenesis_ssf2_banks, sizeof(gwenesis_ssf2_banks), 1, file);
+  }
 }
 
 void gwenesis_bus_load_state(FILE *file) {
@@ -908,5 +987,9 @@ void gwenesis_bus_load_state(FILE *file) {
   if (gwenesis_sram_enabled) {
     fread((unsigned char *)&gwenesis_sram_active,         4, 1, file);
     fread((unsigned char *)&gwenesis_sram_write_protect,  4, 1, file);
+  }
+  /* SSF2 mapper */
+  if (gwenesis_ssf2_enabled) {
+    fread((unsigned char *)gwenesis_ssf2_banks, sizeof(gwenesis_ssf2_banks), 1, file);
   }
 }

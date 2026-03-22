@@ -161,9 +161,39 @@
 	extern unsigned char M68K_RAM[];
 #endif
 
-#define FETCH8ROM(A) ((ROM_DATA[((A) ^ 1)]))
-#define FETCH16ROM(A) ((*(unsigned short *)&ROM_DATA[(A)]))
-#define FETCH32ROM(A) ( (*(unsigned int *)&ROM_DATA[(A)] << 16) | (*(unsigned int *)&ROM_DATA[(A)] >> 16) )
+/* SSF2 bankswitching mapper support.
+ * The 4 MB logical ROM space (0x000000-0x3FFFFF) is split into 8 slots of
+ * 512 KB. gwenesis_ssf2_banks[slot] gives the physical 512 KB page number.
+ * Slot 0 is always fixed to page 0; slots 1-7 are remappable at runtime via
+ * writes to 0xA130F3..0xA130FF.
+ * Declaring these here (rather than in gwenesis_bus.h) ensures that ALL ROM
+ * fetch paths — opcodes, immediates, PC-relative — apply the translation. */
+extern int           gwenesis_ssf2_enabled;
+extern unsigned char gwenesis_ssf2_banks[8];
+
+static inline unsigned int gwenesis_ssf2_rom_phys(unsigned int a) {
+    unsigned int masked = a & 0x3FFFFFu;
+    unsigned int slot   = masked >> 19;          /* 512 KB window index (0-7) */
+    unsigned int offset = masked & 0x7FFFFu;     /* byte offset within window */
+    return ((unsigned int)gwenesis_ssf2_banks[slot] << 19) | offset;
+}
+
+#define FETCH8ROM(A) \
+    (gwenesis_ssf2_enabled \
+        ? (ROM_DATA[gwenesis_ssf2_rom_phys(A) ^ 1u]) \
+        : (ROM_DATA[((A) ^ 1u)]))
+
+#define FETCH16ROM(A) \
+    (gwenesis_ssf2_enabled \
+        ? (*(unsigned short *)&ROM_DATA[gwenesis_ssf2_rom_phys(A)]) \
+        : (*(unsigned short *)&ROM_DATA[(A)]))
+
+#define FETCH32ROM(A) \
+    (gwenesis_ssf2_enabled \
+        ? ( (*(unsigned int *)&ROM_DATA[gwenesis_ssf2_rom_phys(A)] << 16) \
+          | (*(unsigned int *)&ROM_DATA[gwenesis_ssf2_rom_phys(A)] >> 16) ) \
+        : ( (*(unsigned int *)&ROM_DATA[(A)] << 16) \
+          | (*(unsigned int *)&ROM_DATA[(A)] >> 16) ) )
 
 #ifdef TARGET_GNW
 

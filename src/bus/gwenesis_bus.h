@@ -77,7 +77,8 @@ enum mapped_address
     VDP_ADDR,
     RAM_ADDR,
     SRAM_ADDR,
-    SRAM_CTRL
+    SRAM_CTRL,
+    SSF2_BANK_CTRL  /* Super Street Fighter II bankswitching registers 0xA130F3..0xA130FF */
 };
 
 enum gwenesis_bus_pad_button
@@ -110,6 +111,20 @@ extern int gwenesis_sram_active;           /* runtime: 1 = SRAM selected via reg
 extern int gwenesis_sram_write_protect;    /* runtime: 1 = SRAM write-protected via reg 0xA130F1 */
 extern unsigned int gwenesis_sram_start;   /* first mapped address (always even) */
 extern unsigned int gwenesis_sram_end;     /* last  mapped address */
+
+/* SSF2 Mapper (Super Street Fighter II bankswitching)
+ *
+ * The 4 MB logical ROM space (0x000000-0x3FFFFF) is split into 8 slots of
+ * 512 KB each.  Slot 0 (0x000000-0x07FFFF) is always wired to physical bank 0
+ * and cannot be remapped.  Slots 1-7 are controlled by byte writes to the
+ * odd addresses 0xA130F3, 0xA130F5, 0xA130F7, 0xA130F9, 0xA130FB, 0xA130FD,
+ * 0xA130FF respectively.  The value written is the physical 512 KB page number
+ * (0-15) to map into that slot.
+ *
+ * Reference: https://web.archive.org/web/20130731104452/http://emudocs.org/Genesis/ssf2.txt
+ */
+extern int           gwenesis_ssf2_enabled;  /* 1 = SSF2 mapper active */
+extern unsigned char gwenesis_ssf2_banks[8]; /* logical slot → physical 512 KB page */
 
 void gwenesis_bus_save_state(FILE *file);
 void gwenesis_bus_load_state(FILE *file);
