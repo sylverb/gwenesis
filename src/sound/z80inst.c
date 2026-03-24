@@ -34,11 +34,13 @@ __license__ = "GPLv3"
 
 static int bus_ack = 0;
 static int reset = 0;
-static int reset_once = 0;
 int zclk = 0;
 static int initialized = 0;
 
-unsigned char *Z80_RAM;
+/* Z80 core FAST_RDOP expects 8 pages of 0x2000 bytes. */
+unsigned char *Z80_RAM[8];
+static uint8_t z80_dummy[0x2000];
+static unsigned char *Z80_RAM_BASE;
 
 static Z80 cpu;
 
@@ -76,9 +78,9 @@ void z80_start() {
     cpu.Trap = 0x0009;
     ResetZ80(&cpu);
     reset=1;
-    reset_once=0;
     bus_ack=0;
     zclk=0;
+    memset(z80_dummy, 0xFF, sizeof(z80_dummy));
 }
 
 void z80_pulse_reset() {
@@ -91,16 +93,16 @@ void z80_run(int target) {
   // we are in advance,nothind to do
 current_timeslice = 0;
   if (zclk >= target) {
- // z80_log("z80_skip time","%1d%1d%1d||zclk=%d,tgt=%d",reset_once,bus_ack,reset, zclk, target);
+ // z80_log("z80_skip time","%1d%1d||zclk=%d,tgt=%d",bus_ack,reset, zclk, target);
     return;
   }
 
   current_timeslice = target - zclk;
 
   int rem = 0;
-  if ((reset_once == 1) && (bus_ack == 0) && (reset == 0)) {
+  if ((bus_ack == 0) && (reset == 0)) {
 
-   // z80_log("z80_run", "%1d%1d%1d||zclk=%d,tgt=%d",reset_once, bus_ack, reset, zclk, target);
+   // z80_log("z80_run", "%1d%1d||zclk=%d,tgt=%d", bus_ack, reset, zclk, target);
     rem = ExecZ80(&cpu, current_timeslice / Z80_FREQ_DIVISOR);
 
   }
@@ -119,7 +121,18 @@ void z80_sync(void) {
 
 void z80_set_memory(unsigned char *buffer)
 {
-    Z80_RAM = buffer;
+    Z80_RAM_BASE = buffer;
+
+    // 0x0000–0x1FFF → RAM
+    Z80_RAM[0] = buffer;
+
+    // 0x2000–0x3FFF → mirror RAM
+    Z80_RAM[1] = buffer;
+    
+    // 0x4000–0xFFFF → NOT RAM → dummy (handled by RdZ80/WrZ80)
+    for (int i = 2; i < 8; i++) {
+      Z80_RAM[i] = z80_dummy;
+    }
     initialized = 1;
 }
 
@@ -143,14 +156,15 @@ void z80_write_ctrl(unsigned int address, unsigned int value) {
   } else if (address == 0x1200) // RESET
   {
     z80_log(__FUNCTION__,"RESET = %d, current=%d", value,reset);
-  
+
     if (value == 0) {
       reset = 1;
     } else {
-
-      z80_pulse_reset();
+      /* Real hardware: reset pulse occurs on 0->1 transition only. */
+      if (reset) {
+        z80_pulse_reset();
+      }
       reset = 0;
-      reset_once = 1;
     }
   }
 }
@@ -161,8 +175,10 @@ unsigned int z80_read_ctrl(unsigned int address) {
 
   if (address == 0x1100) {
 
-    z80_log(__FUNCTION__,"RUNNING = %d ", bus_ack ? 0 : 1);
-    return bus_ack == 1 ? 0 : 1;
+    /* BUSACK is asserted only when bus is requested and Z80 is not held in reset. */
+    unsigned int busack = (bus_ack == 1 && reset == 0) ? 0 : 1;
+    z80_log(__FUNCTION__,"RUNNING = %d ", busack);
+    return busack;
 
   } else if (address == 0x1101) {
     return 0x00;
@@ -180,7 +196,7 @@ unsigned int z80_read_ctrl(unsigned int address) {
 
 void z80_irq_line(unsigned int value)
 {
-    if (reset_once == 0) return;
+    if (reset) return;
 
     if (value)
         cpu.IRequest = INT_IRQ;
@@ -268,7 +284,7 @@ word LoopZ80(register Z80 *R)
 byte RdZ80(register word Addr) {
 
   if (Addr < 0x4000)
-    return Z80_RAM[Addr & 0x1FFF];
+    return Z80_RAM_BASE[Addr & 0x1FFF];
 
   if (Addr < 0x6000)
     return YM2612Read(zclk + current_timeslice - (cpu.ICount * Z80_FREQ_DIVISOR));
@@ -289,7 +305,7 @@ void WrZ80(register word Addr, register byte Value) {
 
   // ZRAM & mirror
   if (Addr < 0x4000) {
-    Z80_RAM[Addr&0x1FFF] = Value;
+    Z80_RAM_BASE[Addr&0x1FFF] = Value;
     return;
   }
 
@@ -330,11 +346,12 @@ void PatchZ80(register Z80 *R) {;}
 void DebugZ80(register Z80 *R) {;}
 
 void gwenesis_z80inst_save_state(FILE *file) {
+    uint32_t dummy = 0;
     fwrite((unsigned char *)&cpu, sizeof(Z80), 1, file);
 
     fwrite((unsigned char *)&bus_ack, 4, 1, file);
     fwrite((unsigned char *)&reset, 4, 1, file);
-    fwrite((unsigned char *)&reset_once, 4, 1, file);
+    fwrite((unsigned char *)&dummy, 4, 1, file);
     fwrite((unsigned char *)&zclk, 4, 1, file);
     fwrite((unsigned char *)&initialized, 4, 1, file);
     fwrite((unsigned char *)&Z80_BANK, 4, 1, file);
@@ -342,11 +359,12 @@ void gwenesis_z80inst_save_state(FILE *file) {
 }
 
 void gwenesis_z80inst_load_state(FILE *file) {
+    uint32_t dummy = 0;
     fread((unsigned char *)&cpu, sizeof(Z80), 1, file);
 
     fread((unsigned char *)&bus_ack, 4, 1, file);
     fread((unsigned char *)&reset, 4, 1, file);
-    fread((unsigned char *)&reset_once, 4, 1, file);
+    fread((unsigned char *)&dummy, 4, 1, file); // For compatibility with old savestates
     fread((unsigned char *)&zclk, 4, 1, file);
     fread((unsigned char *)&initialized, 4, 1, file);
     fread((unsigned char *)&Z80_BANK, 4, 1, file);
