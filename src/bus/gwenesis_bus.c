@@ -206,6 +206,11 @@ void load_cartridge(unsigned char *buffer, size_t size)
     z80_pulse_reset();
 
     // Copy file contents to CPU ROM memory
+    if (size > MAX_ROM_SIZE) {
+        printf("WARNING: ROM too large (%zu KB), truncating to %d KB\n",
+               size / 1024, MAX_ROM_SIZE / 1024);
+        size = MAX_ROM_SIZE;
+    }
     memcpy(ROM_DATA, buffer, size);
 
     #ifdef ROM_SWAP
@@ -270,7 +275,7 @@ void load_cartridge(unsigned char *buffer, size_t size)
     gwenesis_ssf2_enabled = 0;
     for (int i = 0; i < 8; i++) gwenesis_ssf2_banks[i] = (unsigned char)i;
 
-    if (1) {//size > 0x400000) {
+    if (size > 0x400000) {
         gwenesis_ssf2_enabled = 1;
         printf("SSF2 mapper enabled (ROM size: %zu bytes / %zu KB)\n",
                size, size / 1024);
@@ -743,7 +748,7 @@ static inline void gwenesis_bus_write_memory_8(unsigned int address,
     if (gwenesis_ssf2_enabled) {
       unsigned int slot = (address - 0xA130F0) >> 1;  /* 1..7 */
       if (slot >= 1 && slot <= 7)
-        gwenesis_ssf2_banks[slot] = value & 0x0F;     /* 4 bits = up to 16 physical pages */
+        gwenesis_ssf2_banks[slot] = value & 0x3F;     /* 6 bits per SSF2 spec = up to 32 MB */
     }
     return;
 
@@ -838,7 +843,7 @@ static inline void gwenesis_bus_write_memory_16(unsigned int address,
     if (gwenesis_ssf2_enabled) {
       unsigned int slot = (address - 0xA130F0) >> 1;
       if (slot >= 1 && slot <= 7)
-        gwenesis_ssf2_banks[slot] = (value & 0xFF) & 0x0F;
+        gwenesis_ssf2_banks[slot] = (value & 0xFF) & 0x3F;
     }
     return;
 

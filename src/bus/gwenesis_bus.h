@@ -24,7 +24,8 @@ __license__ = "GPLv3"
 #include <stdio.h>
 #include <string.h>
 
-#define MAX_ROM_SIZE 0x800000
+/* 32 MB is the maximum supported size for SSF2 mapper */
+#define MAX_ROM_SIZE 0x2000000
 #define MAX_RAM_SIZE 0x10000
 #define MAX_Z80_RAM_SIZE 8192
 
