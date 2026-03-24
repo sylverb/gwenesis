@@ -105,7 +105,7 @@ void reset_emulation();
 void set_region();
 
 /* SRAM */
-extern unsigned char GWENESIS_SRAM[MAX_SRAM_SIZE];
+extern unsigned char *GWENESIS_SRAM;
 extern int gwenesis_sram_enabled;          /* 1 = cartridge has SRAM (from ROM header) */
 extern int gwenesis_sram_odd_only;         /* 1 = SRAM mapped on odd bytes only (e.g. Landstalker) */
 extern int gwenesis_sram_active;           /* runtime: 1 = SRAM selected via reg 0xA130F1 */

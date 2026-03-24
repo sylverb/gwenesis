@@ -78,7 +78,7 @@ unsigned char TMSS[0x4];
 extern unsigned short gwenesis_vdp_status;
 
 /* Cartridge SRAM — static buffer in normal RAM (not ITCRAM which is at 0x0) */
-unsigned char GWENESIS_SRAM[MAX_SRAM_SIZE];
+unsigned char *GWENESIS_SRAM;
 int           gwenesis_sram_enabled      = 0; // 1 if the cartridge has SRAM (from ROM header)
 int           gwenesis_sram_odd_only     = 0; // 1 = data on odd bytes only (e.g. Landstalker)
 int           gwenesis_sram_active       = 0; // runtime: register 0xA130F1 bit0 (1=SRAM, 0=ROM)
@@ -110,7 +110,7 @@ int tmss_count = 0;
 void load_cartridge()
 {
     // Clear all volatile memory
-    M68K_RAM=itc_malloc(MAX_RAM_SIZE); // 68K RAM 
+    M68K_RAM = itc_malloc(MAX_RAM_SIZE); // M68K RAM 
     memset(M68K_RAM, 0, MAX_RAM_SIZE);
     memset(ZRAM, 0, MAX_Z80_RAM_SIZE);
 
@@ -134,6 +134,7 @@ void load_cartridge()
     gwenesis_sram_odd_only = 0;
     gwenesis_sram_active   = 0;
     gwenesis_sram_write_protect = 0;
+    GWENESIS_SRAM = ahb_malloc(MAX_SRAM_SIZE);
     memset(GWENESIS_SRAM, 0x00, MAX_SRAM_SIZE);
 
     unsigned char flag_hi  = FETCH8ROM(0x1B0);
