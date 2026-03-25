@@ -677,7 +677,7 @@ static inline unsigned int gwenesis_bus_read_memory_16(unsigned int address) {
 
   case Z80_RAM_ADDR:
   case Z80_RAM_ADDR1K:
-    return ZRAM[address & 0X1FFF] | (ZRAM[address & 0X1FFF] << 8);
+    return (ZRAM[address & 0x1FFF] << 8) | ZRAM[(address + 1) & 0x1FFF];
 
   case Z80_YM2612_ADDR:
     ret_value = YM2612Read(m68k_cycles_master());

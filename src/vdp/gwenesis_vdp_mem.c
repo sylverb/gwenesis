@@ -82,7 +82,7 @@ static unsigned short address_reg = 0;
 // Define VDP control pending and set initial state
 int command_word_pending = 0;
 // Define VDP status and set initial status value
-unsigned short gwenesis_vdp_status = 0x3C00;
+unsigned short gwenesis_vdp_status = 0x3C00 | STATUS_FIFO_EMPTY;
 
 extern int scan_line;
 
@@ -161,7 +161,7 @@ void gwenesis_vdp_reset() {
   code_reg = 0;
   hint_pending = 0;
   // _vcounter = 0;
-  gwenesis_vdp_status = 0x3C00;
+  gwenesis_vdp_status = 0x3C00 | STATUS_FIFO_EMPTY;
   // //line_counter_interrupt = 0;
   hvcounter_latched = 0;
 
@@ -293,7 +293,6 @@ static inline __attribute__((always_inline)) void gwenesis_vdp_register_w(int re
     // Writing a register clear the first command word
     // (see sonic3d intro wrong colors, and vdpfifotesting)
     code_reg &= ~0x3;
-    address_reg &= ~0x3FFF;
 
     switch (reg)
     {
@@ -455,6 +454,7 @@ void gwenesis_vdp_dma_fill(unsigned short value)
       CRAM565[0xC0 + ((address_reg & 0x7f) >> 1)] = pixel;
 
       address_reg += REG15_DMA_INCREMENT;
+      address_reg &= 0x7F;
       src_addr_low++;
     } while (--dma_length);
     break;
@@ -462,6 +462,7 @@ void gwenesis_vdp_dma_fill(unsigned short value)
     do {
       VSRAM[(address_reg & 0x7f) >> 1] = fifo[3] & 0x03FF;
       address_reg += REG15_DMA_INCREMENT;
+      address_reg &= 0x7F;
       src_addr_low++;
     } while (--dma_length);
     break;
@@ -555,6 +556,7 @@ void gwenesis_vdp_dma_m68k()
           CRAM565[0xC0 + ((address_reg & 0x7f) >> 1)] = pixel;
 
           address_reg += REG15_DMA_INCREMENT;
+          address_reg &= 0x7F;
           src_addr += 2;
         } while (--dma_length);
         break;
@@ -566,6 +568,7 @@ void gwenesis_vdp_dma_m68k()
           push_fifo(value);
           VSRAM[(address_reg & 0x7f) >> 1] = value & 0x03FF;
           address_reg += REG15_DMA_INCREMENT;
+          address_reg &= 0x7F;
           src_addr += 2;
         } while (--dma_length);
         break;
@@ -619,6 +622,7 @@ void gwenesis_vdp_dma_m68k()
           CRAM565[0xC0 + ((address_reg & 0x7f) >> 1)] = pixel;
 
           address_reg += REG15_DMA_INCREMENT;
+          address_reg &= 0x7F;
           src_addr += 2;
         } while (--dma_length);
         break;
@@ -630,6 +634,7 @@ void gwenesis_vdp_dma_m68k()
           push_fifo(value);
           VSRAM[(address_reg & 0x7f) >> 1] = value & 0x03FF;
           address_reg += REG15_DMA_INCREMENT;
+          address_reg &= 0x7F;
           src_addr += 2;
         } while (--dma_length);
         break;
@@ -665,7 +670,7 @@ void gwenesis_vdp_dma_copy()
     do
     {
         unsigned short value = VRAM[src_addr_low ^ 1];
-        gwenesis_vdp_vram_write((address_reg ^ 1) & 0xFFFF, value);
+        gwenesis_vdp_vram_write(address_reg & 0xFFFF, value);
 
         address_reg += REG15_DMA_INCREMENT;
         src_addr_low++;
@@ -862,7 +867,7 @@ void gwenesis_vdp_write_data_port_16(unsigned int value)
             CRAM565[0xC0 + ((address_reg & 0x7f) >> 1)] = pixel;
 
             address_reg += REG15_DMA_INCREMENT;
-            address_reg &= 0xFFFF;
+            address_reg &= 0x7F;
 
             break;
         case 0x5: /* VSRAM write */
@@ -871,7 +876,7 @@ void gwenesis_vdp_write_data_port_16(unsigned int value)
            // printf("write dataport 16: VSRAM@%04x:%04x\n",address_reg,value);
             VSRAM[(address_reg & 0x7f) >> 1] = value & 0X03FF;
             address_reg += REG15_DMA_INCREMENT;
-            address_reg &= 0xFFFF;
+            address_reg &= 0x7F;
             break;
         case 0x0:
         case 0x4:
