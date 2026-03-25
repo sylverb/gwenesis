@@ -181,19 +181,20 @@ static inline unsigned int gwenesis_ssf2_rom_phys(unsigned int a) {
 #define FETCH8ROM(A) \
     (gwenesis_ssf2_enabled \
         ? (ROM_DATA[gwenesis_ssf2_rom_phys(A) ^ 1u]) \
-        : (ROM_DATA[((A) ^ 1u)]))
+        : (ROM_DATA[(((A) & 0x3FFFFFu) ^ 1u)]))
 
 #define FETCH16ROM(A) \
     (gwenesis_ssf2_enabled \
         ? (*(unsigned short *)&ROM_DATA[gwenesis_ssf2_rom_phys(A)]) \
-        : (*(unsigned short *)&ROM_DATA[(A)]))
+        : (*(unsigned short *)&ROM_DATA[((A) & 0x3FFFFFu)]))
 
 #define FETCH32ROM(A) \
     (gwenesis_ssf2_enabled \
         ? ( (*(unsigned int *)&ROM_DATA[gwenesis_ssf2_rom_phys(A)] << 16) \
           | (*(unsigned int *)&ROM_DATA[gwenesis_ssf2_rom_phys(A)] >> 16) ) \
-        : ( (*(unsigned int *)&ROM_DATA[(A)] << 16) \
-          | (*(unsigned int *)&ROM_DATA[(A)] >> 16) ) )
+        : ( (*(unsigned int *)&ROM_DATA[((A) & 0x3FFFFFu)] << 16) \
+          | (*(unsigned int *)&ROM_DATA[((A) & 0x3FFFFFu)] >> 16) ) )
+
 
 #ifdef TARGET_GNW
 
