@@ -30,7 +30,7 @@ __license__ = "GPLv3"
 #define MAX_Z80_RAM_SIZE 8192
 
 /* Cartridge SRAM support */
-#define MAX_SRAM_SIZE  16*1024 // 0x10000   /* 64 KB max (standard) */
+#define MAX_SRAM_SIZE  0x10000   /* 64 KB max (standard) */
 /* Byte index mask for SRAM[] (odd-only uses packed index with same mask). */
 #define GWENESIS_SRAM_MASK (MAX_SRAM_SIZE - 1)
 
