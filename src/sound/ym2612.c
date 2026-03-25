@@ -1806,8 +1806,8 @@ INLINE void OPNWriteReg(int r, int v)
           CH->ams = lfo_ams_depth_shift[(v>>4) & 0x03];
 
           /* PAN :  b7 = L, b6 = R */
-        //  ym2612.OPN.pan[ c*2   ] = (v & 0x80) ? bitmask : 0;
-         // ym2612.OPN.pan[ c*2+1 ] = (v & 0x40) ? bitmask : 0;
+          ym2612.OPN.pan[ c*2   ] = (v & 0x80) ? bitmask : 0;
+          ym2612.OPN.pan[ c*2+1 ] = (v & 0x40) ? bitmask : 0;
           break;
       }
       break;
@@ -2110,18 +2110,19 @@ static inline void YM2612Update(int16_t *buffer, int length)
     lt += ((out_fm[5]) & ym2612.OPN.pan[10]);
     rt += ((out_fm[5]) & ym2612.OPN.pan[11]);
     #endif
-    lt  = out_fm[0];
-   // rt  = out_fm[0];
-    lt += out_fm[1];
-   // rt += out_fm[1];
-    lt += out_fm[2];
-   // rt += out_fm[2];
-    lt += out_fm[3];
-   // rt += out_fm[3];
-    lt += out_fm[4];
+
+    lt  = (out_fm[0] & (ym2612.OPN.pan[0]  | ym2612.OPN.pan[1]));
+    //rt  = out_fm[0];
+    lt += (out_fm[1] & (ym2612.OPN.pan[2]  | ym2612.OPN.pan[3]));
+    //rt += out_fm[1];
+    lt += (out_fm[2] & (ym2612.OPN.pan[4]  | ym2612.OPN.pan[5]));
+    //rt += out_fm[2];
+    lt += (out_fm[3] & (ym2612.OPN.pan[6]  | ym2612.OPN.pan[7]));
+    //rt += out_fm[3];
+    lt += (out_fm[4] & (ym2612.OPN.pan[8]  | ym2612.OPN.pan[9]));
     //rt += out_fm[4];
-    lt += out_fm[5];
-   // rt += out_fm[5];
+    lt += (out_fm[5] & (ym2612.OPN.pan[10] | ym2612.OPN.pan[11]));
+    //rt += out_fm[5];
 
     *buffer++ = lt;
 
