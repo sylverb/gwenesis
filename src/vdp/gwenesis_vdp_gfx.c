@@ -36,7 +36,7 @@ __license__ = "GPLv3"
 
 typedef unsigned char uint8_t;
 typedef unsigned short uint16_t;
-#include "stm32h7b0xx.h"
+typedef unsigned int uint32_t;
 extern unsigned char* VRAM;
 
 #else

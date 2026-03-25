@@ -197,6 +197,22 @@ static inline unsigned int gwenesis_ssf2_rom_phys(unsigned int a) {
 
 #ifdef TARGET_GNW
 
+/*
+ * Under TARGET_GNW the original code assumes STM32H7 memory mapping where the
+ * emulated M68K RAM lives at virtual address 0x0000.
+ *
+ * On desktop Linux we can't map RAM at address 0x0, so when LINUX_EMU is
+ * enabled we redirect RAM accesses to the allocated `M68K_RAM` pointer.
+ */
+#if defined(LINUX_EMU)
+#define FETCH8RAM(A) ((M68K_RAM[(A ^ 1) & 0xFFFF]))
+#define FETCH16RAM(A) ((*(unsigned short *)&M68K_RAM[(A)&0xFFFF]))
+#define FETCH32RAM(A) ( (*(unsigned int *)&M68K_RAM[(A&0xFFFF)] << 16) | (*(unsigned int *)&M68K_RAM[(A&0xFFFF)] >> 16) )
+
+#define WRITE8RAM(A, V) (M68K_RAM[(A ^ 1) & 0xFFFF] = (V))
+#define WRITE16RAM(A, V) ((*(unsigned short *)&M68K_RAM[(A)&0xFFFF] = (V)))
+#define WRITE32RAM(A, V) ((*(unsigned int *)&M68K_RAM[(A)&0xFFFF] =( ((V) << 16) | ((V) >> 16) ) ))
+#else
 /* Direct access to ITCRAM as M68KRAM on STM32H7 mapped at 0x0 !!  */
 #define FETCH8RAM(A)    (*(unsigned char  *)(((A)&0XFFFF) ^ 1))
 #define FETCH16RAM(A)   (*(unsigned short *)((A)&0XFFFF))
@@ -205,6 +221,7 @@ static inline unsigned int gwenesis_ssf2_rom_phys(unsigned int a) {
 #define WRITE8RAM(A, V)  ((*(unsigned char  *)(((A)&0XFFFF) ^ 1)) = (V))
 #define WRITE16RAM(A, V) ((*(unsigned short *)( (A)&0XFFFF))      = (V))
 #define WRITE32RAM(A, V) ((*(unsigned int   *)( (A)&0XFFFF))      = (((V) << 16) | ((V) >> 16)))
+#endif
 #else
 
 #define FETCH8RAM(A) ((M68K_RAM[(A ^ 1) & 0xFFFF]))
