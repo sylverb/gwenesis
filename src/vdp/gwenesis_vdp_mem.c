@@ -837,6 +837,7 @@ void gwenesis_vdp_write_data_port_16(unsigned int value)
         switch (code_reg & 0xF)
         {
         case 0x1: /* VRAM write */
+        case 0x9:
             //vdpm_log(__FUNCTION__,"VRAM write : addr:%x increment:%d value:%04x",
              // address_reg, REG15_DMA_INCREMENT, value);
             gwenesis_vdp_vram_write(address_reg& 0xFFFF, (value >> 8) & 0xFF);
@@ -846,6 +847,7 @@ void gwenesis_vdp_write_data_port_16(unsigned int value)
 
             break;
         case 0x3: /* CRAM write */
+        case 0x7:
             //vdpm_log(__FUNCTION__,"CRAM write : addr:%x increment:%d value:%04x",
              // address_reg, REG15_DMA_INCREMENT, value);
             CRAM[(address_reg & 0x7f) >> 1] = value;
@@ -883,10 +885,8 @@ void gwenesis_vdp_write_data_port_16(unsigned int value)
         case 0x8: // Write operation after setting up
                   // Makes Compatible with Alladin and Ecco 2
             break;
-        case 0x9: // VDP FIFO TEST
-            break;
         default:
-            printf("VDP Data Port invalid");
+            printf("VDP Data Port invalid: %x\n", code_reg & 0xF);
         }
 
     /* if a DMA is scheduled, do it */
