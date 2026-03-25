@@ -456,14 +456,15 @@ static inline unsigned int gwenesis_bus_map_z80_address(unsigned int address) {
   case 0x3000:
     return Z80_RAM_ADDR1K;
   case 0x4000:
+  case 0x5000: /* YM2612 mirror ($A05000-$A05FFF) */
     return Z80_YM2612_ADDR;
   case 0x6000:
     return Z80_BANK_ADDR;
   case 0x7000:
     return Z80_SN76489_ADDR;
   default:
-    bus_log(__FUNCTION__,"no map Z80 %x",address);
-    assert(0);
+    /* $A08000-$A0FFFF : Z80 bank window — open bus from 68k side */
+    bus_log(__FUNCTION__,"no map Z80 %x (open bus)",address);
     return NONE;
   }
 }
@@ -514,15 +515,14 @@ static inline unsigned int gwenesis_bus_map_io_address(unsigned int address)
     return NONE;
   }
 
-  unsigned int range = (address & 0x1000) ;
+  unsigned int range = (address & 0xF000) ; /* 0xA10000 - 0xA1FFFF */
   switch (range) {
   case 0:      return IO_CTRL;
   case 0x1000: return Z80_CTRL;
   default:
-      // if (address >= 0xa14000 && address < 0xa11404)
-      // return (tmss_state == 0) ? TMSS_CTRL : NONE;
-      bus_log(__FUNCTION__,"no map io %x",address);
-
+    // if (address >= 0xa14000 && address < 0xa11404)
+    // return (tmss_state == 0) ? TMSS_CTRL : NONE;
+    bus_log(__FUNCTION__,"no map io %x",address);
     return NONE;
   }
 }
@@ -557,9 +557,9 @@ unsigned int gwenesis_bus_map_address(unsigned int address) {
   else if (range == 0xA1) //                  IO ADDRESS  0xA10000 - 0xA1FFFF
     return gwenesis_bus_map_io_address(address);
 
-  else if (range == 0xC0) // VDP ADDRESS 0xC00000 - 0xDFFFFFF
+  else if ((range & 0xE0) == 0xC0) // VDP ADDRESS 0xC00000 - 0xDFFFFFF
     return VDP_ADDR;
-  else if (range == 0xFF) // RAM ADDRESS 0xE00000 - 0xFFFFFFF
+  else if (range >= 0xE0) // RAM ADDRESS 0xE00000 - 0xFFFFFFF
     return RAM_ADDR;
   // If not a valid address return 0
   bus_log(__FUNCTION__,"M68K > ?? unnmap address %x", address);

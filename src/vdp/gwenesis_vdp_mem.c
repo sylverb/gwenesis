@@ -941,7 +941,7 @@ unsigned int gwenesis_vdp_read_memory_16(unsigned int address)
       return gwenesis_vdp_read_data_port_16();
     else if (address < 0x8)
       return status_register_r();
-    else if (address < 0xf)
+    else if (address < 0x10) /* 0x08-0x0F : HV counter mirrors */
       return gwenesis_vdp_hvcounter();
     else 
       return 0xff;
