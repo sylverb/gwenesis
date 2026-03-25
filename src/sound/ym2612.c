@@ -12,15 +12,25 @@
 ** Additional code & fixes by Eke-Eke for Genesis Plus GX
 **
 ** Huge thanks to Nemesis, most of those fixes came from his tests on Sega Genesis hardware
-** More informations at http://gendev.spritesmind.net/forum/viewtopic.php?t=386
+** Additional info from YM2612 die shot analysis by Sauraen
+** See http://gendev.spritesmind.net/forum/viewtopic.php?t=386
 **
 **  TODO:
 **  - better documentation
 **  - BUSY flag emulation
+**  - accurate DAC output
 */
 
 /*
 **  CHANGELOG:
+**
+** 09-04-2017 Eke-Eke (Genesis Plus GX):
+**  - fixed LFO PM implementation: block & keyscale code should not be modified by LFO (verified on YM2612 die)
+**
+** 12-03-2017 Eke-Eke (Genesis Plus GX):
+**  - fixed Op1 self-feedback regression introduced by previous modifications
+**  - removed one-sample extra delay on Op1 calculated output
+**  - refactored chan_calc() function 
 **
 ** 01-09-2012 Eke-Eke (Genesis Plus GX):
 **  - removed input clock / output samplerate frequency ratio, chip now always run at (original) internal sample frequency
@@ -271,12 +281,11 @@ O(18),O(18),O(18),O(18),O(18),O(18),O(18),O(18),
 
 /* rates 00-11 */
 /*
-O( 0),O( 1),O( 2),O( 3),
-O( 0),O( 1),O( 2),O( 3),
+O( 0),O( 1)
 */
-O(18),O(18),O( 0),O( 0),
-O( 0),O( 0),O( 2),O( 2),   /* Nemesis's tests */
-
+O(18),O(18),               /* from Nemesis's tests on real YM2612 hardware */
+            O( 2),O( 3),
+O( 0),O( 1),O( 2),O( 3),
 O( 0),O( 1),O( 2),O( 3),
 O( 0),O( 1),O( 2),O( 3),
 O( 0),O( 1),O( 2),O( 3),
@@ -840,10 +849,11 @@ INLINE void INTERNAL_TIMER_B(int step)
         ym2612.OPN.ST.status |= 0x02;
 
       /* reload the counter */
-      if (ym2612.OPN.ST.TBL)
+      do
+      {
         ym2612.OPN.ST.TBC += ym2612.OPN.ST.TBL;
-      else
-        ym2612.OPN.ST.TBC = ym2612.OPN.ST.TBL;
+      }
+      while (ym2612.OPN.ST.TBC <= 0);
     }
   }
 }
@@ -1475,7 +1485,7 @@ INLINE signed int op_calc(UINT32 phase, unsigned int env, unsigned int pm)
 
 INLINE signed int op_calc1(UINT32 phase, unsigned int env, unsigned int pm)
 {
-  UINT32 p = (env<<3) + sin_tab[ ( (phase + pm ) >> SIN_BITS ) & SIN_MASK ];
+  UINT32 p = (env<<3) + sin_tab[ ( ( phase >> SIN_BITS ) + pm ) & SIN_MASK ];
 
   if (p >= TL_TAB_LEN)
     return 0;
@@ -1486,32 +1496,29 @@ INLINE void chan_calc(FM_CH *CH, int num)
 {
   do
   {
+    INT32 out = 0;
     UINT32 AM = ym2612.OPN.LFO_AM >> CH->ams;
     unsigned int eg_out = volume_calc(&CH->SLOT[SLOT1]);
 
     m2 = c1 = c2 = mem = 0;
 
     *CH->mem_connect = CH->mem_value;  /* restore delayed sample (MEM) value to m2 or c2 */
+
+    if( eg_out < ENV_QUIET )  /* SLOT 1 */
     {
-      INT32 out = CH->op1_out[0] + CH->op1_out[1];
-      CH->op1_out[0] = CH->op1_out[1];
+      if (CH->FB < SIN_BITS)
+        out = (CH->op1_out[0] + CH->op1_out[1]) >> CH->FB;
+      out = op_calc1(CH->SLOT[SLOT1].phase, eg_out, out );
+    }
+    CH->op1_out[0] = CH->op1_out[1];
+    CH->op1_out[1] = out;
 
-      if( !CH->connect1 ){
-        /* algorithm 5  */
-        mem = c1 = c2 = CH->op1_out[0];
-      }else{
-        /* other algorithms */
-        *CH->connect1 += CH->op1_out[0];
-      }
-
-      CH->op1_out[1] = 0;
-      if( eg_out < ENV_QUIET )  /* SLOT 1 */
-      {
-        if (!CH->FB)
-          out=0;
-
-        CH->op1_out[1] = op_calc1(CH->SLOT[SLOT1].phase, eg_out, (out<<CH->FB) );
-      }
+    if( !CH->connect1 ){
+      /* algorithm 5  */
+      mem = c1 = c2 = out;
+    }else{
+      /* other algorithms */
+      *CH->connect1 += out;
     }
 
     eg_out = volume_calc(&CH->SLOT[SLOT3]);
@@ -1586,11 +1593,11 @@ INLINE void OPNWriteMode(int r, int v)
         ym2612.OPN.LFO_AM = 126;
       }
       break;
-    case 0x24:  /* timer A High 8*/
+    case 0x24:  /* timer A High */
       ym2612.OPN.ST.TA = (ym2612.OPN.ST.TA & 0x03)|(((int)v)<<2);
       ym2612.OPN.ST.TAL = 1024 - ym2612.OPN.ST.TA;
       break;
-    case 0x25:  /* timer A Low 2*/
+    case 0x25:  /* timer A Low */
       ym2612.OPN.ST.TA = (ym2612.OPN.ST.TA & 0x3fc)|(v&3);
       ym2612.OPN.ST.TAL = 1024 - ym2612.OPN.ST.TA;
       break;
@@ -1794,7 +1801,7 @@ INLINE void OPNWriteReg(int r, int v)
         case 0:    /* 0xb0-0xb2 : FB,ALGO */
         {
           CH->ALGO = v&7;
-          CH->FB   = (v>>3)&7;
+          CH->FB   = SIN_BITS - ((v>>3)&7);
           setup_connection( CH, c );
           break;
         }
@@ -2043,7 +2050,7 @@ static inline void YM2612Update(int16_t *buffer, int length)
   refresh_fc_eg_chan(&ym2612.CH[5]);
 
   /* buffering */
-  for(i=0; i < length ; i++)
+  for(i=0; i<length ; i++)
   {
     /* clear outputs */
     out_fm[0] = 0;
@@ -2071,14 +2078,21 @@ static inline void YM2612Update(int16_t *buffer, int length)
     /* advance LFO */
     advance_lfo();
 
-    /* advance envelope generator */
-    ym2612.OPN.eg_timer ++;
-
     /* EG is updated every 3 samples */
+    ym2612.OPN.eg_timer++;
     if (ym2612.OPN.eg_timer >= 3)
     {
+      /* reset EG timer */
       ym2612.OPN.eg_timer = 0;
+
+      /* increment EG counter */
       ym2612.OPN.eg_cnt++;
+
+      /* EG counter is 12-bit only and zero value is skipped (verified on real hardware) */
+      if (ym2612.OPN.eg_cnt == 4096)
+        ym2612.OPN.eg_cnt = 1;
+
+      /* advance envelope generator */
       advance_eg_channels(&ym2612.CH[0], ym2612.OPN.eg_cnt);
     }
     /* 14-bit accumulator channels outputs (range is -8192;+8191) */
