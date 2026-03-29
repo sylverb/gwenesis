@@ -487,7 +487,7 @@ static inline unsigned int fetch16rom_data(unsigned int a) {
       if (gwenesis_sram_odd_only)
           return 0xFF00 | GWENESIS_SRAM[((a - gwenesis_sram_start) >> 1) & GWENESIS_SRAM_MASK];
       unsigned int off = (a - gwenesis_sram_start) & GWENESIS_SRAM_MASK;
-      return (GWENESIS_SRAM[off] << 8) | GWENESIS_SRAM[off + 1];
+      return (GWENESIS_SRAM[off] << 8) | GWENESIS_SRAM[(off + 1) & GWENESIS_SRAM_MASK];
   }
   return FETCH16ROM(a);
 }
@@ -658,7 +658,7 @@ static inline unsigned int gwenesis_bus_read_memory_16(unsigned int address) {
       return 0xFF00 | GWENESIS_SRAM[idx];
     }
     unsigned int off = (address - gwenesis_sram_start) & GWENESIS_SRAM_MASK;
-    return (GWENESIS_SRAM[off] << 8) | GWENESIS_SRAM[off + 1];
+    return (GWENESIS_SRAM[off] << 8) | GWENESIS_SRAM[(off + 1) & GWENESIS_SRAM_MASK];
   }
 
   case SRAM_CTRL:
@@ -814,7 +814,7 @@ static inline void gwenesis_bus_write_memory_16(unsigned int address,
     } else {
       unsigned int off = (address - gwenesis_sram_start) & GWENESIS_SRAM_MASK;
       GWENESIS_SRAM[off]     = (value >> 8) & 0xFF;
-      GWENESIS_SRAM[off + 1] = value & 0xFF;
+      GWENESIS_SRAM[(off + 1) & GWENESIS_SRAM_MASK] = value & 0xFF;
     }
     gwenesis_sram_mark_dirty();
     return;

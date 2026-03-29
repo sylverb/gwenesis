@@ -154,6 +154,7 @@
 #ifdef TARGET_GNW
 
 	extern const unsigned char *ROM_DATA;
+	extern unsigned int ROM_DATA_LENGTH;
 	extern unsigned char *M68K_RAM;
 #else
 
@@ -178,12 +179,26 @@ static inline unsigned int gwenesis_ssf2_rom_phys(unsigned int a) {
     return ((unsigned int)gwenesis_ssf2_banks[slot] << 19) | offset;
 }
 
+#define ROM_READ8_IDX(I) ((I) < ROM_DATA_LENGTH ? ROM_DATA[(I)] : 0u)
+
 #define FETCH8ROM(A) \
     (gwenesis_ssf2_enabled \
-        ? (ROM_DATA[gwenesis_ssf2_rom_phys(A) ^ 1u]) \
-        : (ROM_DATA[(((A) & 0x3FFFFFu) ^ 1u)]))
+        ? ROM_READ8_IDX(gwenesis_ssf2_rom_phys(A) ^ 1u) \
+        : ROM_READ8_IDX((((A) & 0x3FFFFFu) ^ 1u)))
 
 #if defined(LINUX_EMU)
+#define FETCH16ROM(A) \
+    (gwenesis_ssf2_enabled \
+        ? ( (unsigned int)ROM_READ8_IDX(gwenesis_ssf2_rom_phys(A)) \
+          | ((unsigned int)ROM_READ8_IDX(gwenesis_ssf2_rom_phys((A) + 1u)) << 8) ) \
+        : ( (unsigned int)ROM_READ8_IDX(((A) & 0x3FFFFFu)) \
+          | ((unsigned int)ROM_READ8_IDX((((A) + 1u) & 0x3FFFFFu)) << 8) ))
+
+#define FETCH32ROM(A) \
+    ( ((unsigned int)FETCH16ROM(A) << 16) | (unsigned int)FETCH16ROM((A) + 2u) )
+#else
+/* Safe byte-by-byte access — avoids unaligned word/dword casts that can
+ * trigger a hardfault */
 #define FETCH16ROM(A) \
     (gwenesis_ssf2_enabled \
         ? ( (unsigned int)ROM_DATA[gwenesis_ssf2_rom_phys(A)] \
@@ -193,18 +208,6 @@ static inline unsigned int gwenesis_ssf2_rom_phys(unsigned int a) {
 
 #define FETCH32ROM(A) \
     ( ((unsigned int)FETCH16ROM(A) << 16) | (unsigned int)FETCH16ROM((A) + 2u) )
-#else
-#define FETCH16ROM(A) \
-    (gwenesis_ssf2_enabled \
-        ? (*(unsigned short *)&ROM_DATA[gwenesis_ssf2_rom_phys(A)]) \
-        : (*(unsigned short *)&ROM_DATA[((A) & 0x3FFFFFu)]))
-
-#define FETCH32ROM(A) \
-    (gwenesis_ssf2_enabled \
-        ? ( (*(unsigned int *)&ROM_DATA[gwenesis_ssf2_rom_phys(A)] << 16) \
-          | (*(unsigned int *)&ROM_DATA[gwenesis_ssf2_rom_phys(A)] >> 16) ) \
-        : ( (*(unsigned int *)&ROM_DATA[((A) & 0x3FFFFFu)] << 16) \
-          | (*(unsigned int *)&ROM_DATA[((A) & 0x3FFFFFu)] >> 16) ) )
 #endif
 
 #ifdef TARGET_GNW
@@ -242,14 +245,43 @@ static inline unsigned int gwenesis_ssf2_rom_phys(unsigned int a) {
   M68K_RAM[__a + 3u] = (unsigned char)((__v >> 8) & 0xFFu); \
 } while (0)
 #else
-/* Direct access to ITCRAM as M68KRAM on STM32H7 mapped at 0x0 !!  */
-#define FETCH8RAM(A)    (*(unsigned char  *)(((A)&0XFFFF) ^ 1))
-#define FETCH16RAM(A)   (*(unsigned short *)((A)&0XFFFF))
-#define FETCH32RAM(A) (((*(unsigned int *)((A)&0XFFFF)) << 16) | ((*(unsigned int *)((A)&0XFFFF)) >> 16))
+/* Safe byte-by-byte access to ITCRAM (STM32H7, mapped at 0x0).
+ *
+ * The previous code used direct 16/32-bit pointer casts: *(short*)((A)&0xFFFF)
+ * This caused a BusFault (PRECISERR, BFAR=0x10000) whenever A&0xFFFF >= 0xFFFE
+ * for 16-bit accesses or >= 0xFFFC for 32-bit accesses, because the hardware
+ * read/write spilled past the end of the 64 KB ITCM window (0x0000-0xFFFF).
+ *
+ * The byte-by-byte approach with explicit & 0xFFFF wrapping on every byte
+ * address eliminates the overflow entirely. FETCH8RAM keeps the ^1 byte-swap
+ * required by RAM_SWAP. FETCH16/32 reconstruct the M68K (big-endian) value
+ * from the physically byte-swapped ITCRAM storage. WRITE16/32 do the inverse.
+ *
+ * Performance: Cortex-M7 ITCM byte accesses have 0-wait-state latency so the
+ * overhead vs. the old word/dword cast is negligible. */
 
-#define WRITE8RAM(A, V)  ((*(unsigned char  *)(((A)&0XFFFF) ^ 1)) = (V))
-#define WRITE16RAM(A, V) ((*(unsigned short *)( (A)&0XFFFF))      = (V))
-#define WRITE32RAM(A, V) ((*(unsigned int   *)( (A)&0XFFFF))      = (((V) << 16) | ((V) >> 16)))
+#define FETCH8RAM(A) \
+    (*(unsigned char *)(((A) & 0xFFFF) ^ 1u))
+
+#define FETCH16RAM(A) \
+    (  (unsigned int)(*(unsigned char *) ((A)       & 0xFFFF)) \
+     | ((unsigned int)(*(unsigned char *)(((A)+1u)  & 0xFFFF)) << 8))
+
+#define FETCH32RAM(A) \
+    (((unsigned int)FETCH16RAM(A) << 16) | (unsigned int)FETCH16RAM((A) + 2u))
+
+#define WRITE8RAM(A, V) \
+    ((*(unsigned char *)(((A) & 0xFFFF) ^ 1u)) = (unsigned char)(V))
+
+#define WRITE16RAM(A, V) do { \
+    *(unsigned char *) ((A)       & 0xFFFF) = (unsigned char)( (V)        & 0xFF); \
+    *(unsigned char *)(((A)+1u)   & 0xFFFF) = (unsigned char)(((V) >> 8)  & 0xFF); \
+} while (0)
+
+#define WRITE32RAM(A, V) do { \
+    WRITE16RAM((A),      ((unsigned int)(V) >> 16) & 0xFFFF); \
+    WRITE16RAM((A) + 2u, (unsigned int)(V)         & 0xFFFF); \
+} while (0)
 #endif
 #else
 

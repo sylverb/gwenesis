@@ -62,7 +62,7 @@ void vdpm_log(const char *subs, const char *fmt, ...) {
 
 
 #ifdef TARGET_GNW
-  static uint8_t vram[1024*64];
+  static uint8_t vram[1024*64] __attribute__((aligned(4)));
   unsigned char* VRAM = vram;
 #else
   unsigned char VRAM[VRAM_MAX_SIZE];
