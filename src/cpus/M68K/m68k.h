@@ -183,6 +183,17 @@ static inline unsigned int gwenesis_ssf2_rom_phys(unsigned int a) {
         ? (ROM_DATA[gwenesis_ssf2_rom_phys(A) ^ 1u]) \
         : (ROM_DATA[(((A) & 0x3FFFFFu) ^ 1u)]))
 
+#if defined(LINUX_EMU)
+#define FETCH16ROM(A) \
+    (gwenesis_ssf2_enabled \
+        ? ( (unsigned int)ROM_DATA[gwenesis_ssf2_rom_phys(A)] \
+          | ((unsigned int)ROM_DATA[gwenesis_ssf2_rom_phys((A) + 1u)] << 8) ) \
+        : ( (unsigned int)ROM_DATA[((A) & 0x3FFFFFu)] \
+          | ((unsigned int)ROM_DATA[(((A) + 1u) & 0x3FFFFFu)] << 8) ))
+
+#define FETCH32ROM(A) \
+    ( ((unsigned int)FETCH16ROM(A) << 16) | (unsigned int)FETCH16ROM((A) + 2u) )
+#else
 #define FETCH16ROM(A) \
     (gwenesis_ssf2_enabled \
         ? (*(unsigned short *)&ROM_DATA[gwenesis_ssf2_rom_phys(A)]) \
@@ -194,7 +205,7 @@ static inline unsigned int gwenesis_ssf2_rom_phys(unsigned int a) {
           | (*(unsigned int *)&ROM_DATA[gwenesis_ssf2_rom_phys(A)] >> 16) ) \
         : ( (*(unsigned int *)&ROM_DATA[((A) & 0x3FFFFFu)] << 16) \
           | (*(unsigned int *)&ROM_DATA[((A) & 0x3FFFFFu)] >> 16) ) )
-
+#endif
 
 #ifdef TARGET_GNW
 
@@ -207,12 +218,29 @@ static inline unsigned int gwenesis_ssf2_rom_phys(unsigned int a) {
  */
 #if defined(LINUX_EMU)
 #define FETCH8RAM(A) ((M68K_RAM[(A ^ 1) & 0xFFFF]))
-#define FETCH16RAM(A) ((*(unsigned short *)&M68K_RAM[(A)&0xFFFF]))
-#define FETCH32RAM(A) ( (*(unsigned int *)&M68K_RAM[(A&0xFFFF)] << 16) | (*(unsigned int *)&M68K_RAM[(A&0xFFFF)] >> 16) )
+#define FETCH16RAM(A) \
+  ({ unsigned int __a = ((A) & 0xFFFF); \
+     (unsigned int)M68K_RAM[__a] | ((unsigned int)M68K_RAM[__a + 1u] << 8); })
+#define FETCH32RAM(A) \
+  ({ unsigned int __a = ((A) & 0xFFFF); \
+     (((unsigned int)M68K_RAM[__a] | ((unsigned int)M68K_RAM[__a + 1u] << 8)) << 16) | \
+      ((unsigned int)M68K_RAM[__a + 2u] | ((unsigned int)M68K_RAM[__a + 3u] << 8)); })
 
 #define WRITE8RAM(A, V) (M68K_RAM[(A ^ 1) & 0xFFFF] = (V))
-#define WRITE16RAM(A, V) ((*(unsigned short *)&M68K_RAM[(A)&0xFFFF] = (V)))
-#define WRITE32RAM(A, V) ((*(unsigned int *)&M68K_RAM[(A)&0xFFFF] =( ((V) << 16) | ((V) >> 16) ) ))
+#define WRITE16RAM(A, V) do { \
+  unsigned int __a = ((A) & 0xFFFF); \
+  unsigned int __v = (unsigned int)(V); \
+  M68K_RAM[__a] = (unsigned char)(__v & 0xFFu); \
+  M68K_RAM[__a + 1u] = (unsigned char)((__v >> 8) & 0xFFu); \
+} while (0)
+#define WRITE32RAM(A, V) do { \
+  unsigned int __a = ((A) & 0xFFFF); \
+  unsigned int __v = (unsigned int)(V); \
+  M68K_RAM[__a] = (unsigned char)((__v >> 16) & 0xFFu); \
+  M68K_RAM[__a + 1u] = (unsigned char)((__v >> 24) & 0xFFu); \
+  M68K_RAM[__a + 2u] = (unsigned char)(__v & 0xFFu); \
+  M68K_RAM[__a + 3u] = (unsigned char)((__v >> 8) & 0xFFu); \
+} while (0)
 #else
 /* Direct access to ITCRAM as M68KRAM on STM32H7 mapped at 0x0 !!  */
 #define FETCH8RAM(A)    (*(unsigned char  *)(((A)&0XFFFF) ^ 1))
