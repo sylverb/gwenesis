@@ -997,6 +997,7 @@ void gwenesis_vdp_write_memory_16(unsigned int address, unsigned int value) {
 }
 
 void gwenesis_vdp_mem_save_state(FILE *file) {
+  uint16_t dummy = 0;
   fwrite((unsigned char *)VRAM, VRAM_MAX_SIZE, 1, file);
   fwrite((unsigned char *)CRAM, sizeof(CRAM), 1, file);
   fwrite((unsigned char *)SAT_CACHE, sizeof(SAT_CACHE), 1, file);
@@ -1008,7 +1009,8 @@ void gwenesis_vdp_mem_save_state(FILE *file) {
   fwrite((unsigned char *)&code_reg, 4, 1, file);
   fwrite((unsigned char *)&address_reg, 4, 1, file);
   fwrite((unsigned char *)&command_word_pending, 4, 1, file);
-  fwrite((unsigned char *)&gwenesis_vdp_status, 4, 1, file);
+  fwrite((unsigned char *)&gwenesis_vdp_status, sizeof(gwenesis_vdp_status), 1, file);
+  fwrite((unsigned char *)&dummy, sizeof(dummy), 1, file); // For compatibility with old savestates
   fwrite((unsigned char *)&dma_fill_pending, 4, 1, file);
   fwrite((unsigned char *)&hvcounter_latch, 4, 1, file);
   fwrite((unsigned char *)&hvcounter_latched, 4, 1, file);
@@ -1016,6 +1018,7 @@ void gwenesis_vdp_mem_save_state(FILE *file) {
 }
 
 void gwenesis_vdp_mem_load_state(FILE *file) {
+  uint16_t dummy;
   fread((unsigned char *)VRAM, VRAM_MAX_SIZE, 1, file);
   fread((unsigned char *)CRAM, sizeof(CRAM), 1, file);
   fread((unsigned char *)SAT_CACHE, sizeof(SAT_CACHE), 1, file);
@@ -1027,7 +1030,8 @@ void gwenesis_vdp_mem_load_state(FILE *file) {
   fread((unsigned char *)&code_reg, 4, 1, file);
   fread((unsigned char *)&address_reg, 4, 1, file);
   fread((unsigned char *)&command_word_pending, 4, 1, file);
-  fread((unsigned char *)&gwenesis_vdp_status, 4, 1, file);
+  fread((unsigned char *)&gwenesis_vdp_status, sizeof(gwenesis_vdp_status), 1, file);
+  fread((unsigned char *)&dummy, sizeof(dummy), 1, file); // For compatibility with old savestates
   fread((unsigned char *)&dma_fill_pending, 4, 1, file);
   fread((unsigned char *)&hvcounter_latch, 4, 1, file);
   fread((unsigned char *)&hvcounter_latched, 4, 1, file);
