@@ -694,11 +694,12 @@ void draw_line_aw(int line) {
   int wdwidth_x2 = (screen_width == 320 ? 128 : 64);
 
   unsigned int nt = base_w + row * wdwidth_x2 + Window_first / 4;
+  uint8_t *wpos = scr + Window_first;
 
   for (int i = Window_first / 8; i < Window_last / 8; ++i) {
-    draw_pattern_planeA(end, FETCH16VRAM(nt), paty);
+    draw_pattern_planeA(wpos, FETCH16VRAM(nt), paty);
     nt += 2;
-    end += 8;
+    wpos += 8;
   }
 }
 
