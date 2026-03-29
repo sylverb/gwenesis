@@ -627,7 +627,7 @@ static inline unsigned int gwenesis_bus_read_memory_8(unsigned int address) {
   case TMSS_CTRL:
     bus_log(__FUNCTION__,"TMS");
     if (tmss_state == 0)
-      return TMSS[address & 0x4];
+      return TMSS[address & 0x3];
     return 0xFF;
 
   default:
@@ -781,16 +781,13 @@ static inline void gwenesis_bus_write_memory_8(unsigned int address,
     return;
 
   case TMSS_CTRL:
-
     if (tmss_state == 0) {
-      TMSS[address & 0x4] = value;
+      TMSS[address & 0x3] = value;
       tmss_count++;
       if (tmss_count == 4)
         tmss_state = 1;
     }
     return;
-
-
 
   default:
     //printf("write(%x, %x)\n", address, value);
