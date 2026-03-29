@@ -632,9 +632,8 @@ static inline unsigned int gwenesis_bus_read_memory_8(unsigned int address) {
 
   default:
      bus_log(__FUNCTION__," default read 8 %x", address);
-    return 0x00;
+    return 0xFF; // Open bus
   }
-  return 0x00;
 }
 
 static inline unsigned int gwenesis_bus_read_memory_16(unsigned int address) {
@@ -672,8 +671,7 @@ static inline unsigned int gwenesis_bus_read_memory_16(unsigned int address) {
   //  ret_value = z80_read_ctrl(address & 0xFFFF); 
    // return ret_value | ret_value << 8;
     address &=0xFFFF;
-        return (z80_read_ctrl(address) << 8) | z80_read_ctrl(address | 1);
-
+    return (z80_read_ctrl(address) << 8) | z80_read_ctrl(address | 1);
 
   case Z80_RAM_ADDR:
   case Z80_RAM_ADDR1K:
@@ -683,12 +681,9 @@ static inline unsigned int gwenesis_bus_read_memory_16(unsigned int address) {
     ret_value = YM2612Read(m68k_cycles_master());
     return ret_value | ret_value << 8;
 
-
   case Z80_SN76489_ADDR:
-    return 0xff;
-
   case Z80_BANK_ADDR:
-    return 0xff;
+    return 0xffff;
 
   default:
     bus_log(__FUNCTION__,"read mem 16 default %x", address);
