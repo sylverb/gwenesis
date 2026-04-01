@@ -24,8 +24,14 @@ extern int ym2612_index;
 extern int ym2612_clock;
 #endif
 
+enum {
+    YM2612_DISCRETE = 0,
+    YM2612_INTEGRATED,
+    YM2612_ENHANCED
+  };
+
 extern void YM2612Init(void);
-extern void YM2612Config(unsigned char dac_bits);
+extern void YM2612Config(int type);
 extern void YM2612ResetChip(void);
 #ifdef TARGET_GNW
 /* YM2612Update is static inline in GNW build, not exported */

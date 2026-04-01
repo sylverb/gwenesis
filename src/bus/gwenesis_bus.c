@@ -300,7 +300,7 @@ void power_on() {
   z80_start();
   // Initialize YM2612 chip
   YM2612Init();
-  YM2612Config(9);
+  YM2612Config(YM2612_DISCRETE);
   // Initialize PSG SN76489 chip
   //CLOCK_NTSC      = 3579545,
   //CLOCK_PAL       = 3546895,
