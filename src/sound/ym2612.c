@@ -24,6 +24,10 @@
 /*
 **  CHANGELOG:
 **
+** 26-09-2017 Eke-Eke (Genesis Plus GX):
+**  - fixed EG counter loopback behavior (verified on YM3438 die)
+**  - reverted changes to EG rates 2-7 increment values
+**
 ** 09-04-2017 Eke-Eke (Genesis Plus GX):
 **  - fixed LFO PM implementation: block & keyscale code should not be modified by LFO (verified on YM2612 die)
 **  - fixed Timer B overflow handling
@@ -2139,7 +2143,7 @@ void YM2612Update(int *buffer, int length)
   refresh_fc_eg_chan(&ym2612.CH[5]);
 
   /* buffering */
-  for(i=0; i<length; i++)
+  for(i=0; i<length ; i++)
   {
     /* clear outputs */
     out_fm[0] = 0;
