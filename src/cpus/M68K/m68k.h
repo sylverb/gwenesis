@@ -223,26 +223,26 @@ static inline unsigned int gwenesis_ssf2_rom_phys(unsigned int a) {
 #define FETCH8RAM(A) ((M68K_RAM[(A ^ 1) & 0xFFFF]))
 #define FETCH16RAM(A) \
   ({ unsigned int __a = ((A) & 0xFFFF); \
-     (unsigned int)M68K_RAM[__a] | ((unsigned int)M68K_RAM[__a + 1u] << 8); })
+     (unsigned int)M68K_RAM[__a] | ((unsigned int)M68K_RAM[(__a + 1u) & 0xFFFF] << 8); })
 #define FETCH32RAM(A) \
   ({ unsigned int __a = ((A) & 0xFFFF); \
-     (((unsigned int)M68K_RAM[__a] | ((unsigned int)M68K_RAM[__a + 1u] << 8)) << 16) | \
-      ((unsigned int)M68K_RAM[__a + 2u] | ((unsigned int)M68K_RAM[__a + 3u] << 8)); })
+     (((unsigned int)M68K_RAM[__a] | ((unsigned int)M68K_RAM[(__a + 1u) & 0xFFFF] << 8)) << 16) | \
+      ((unsigned int)M68K_RAM[(__a + 2u) & 0xFFFF] | ((unsigned int)M68K_RAM[(__a + 3u) & 0xFFFF] << 8)); })
 
 #define WRITE8RAM(A, V) (M68K_RAM[(A ^ 1) & 0xFFFF] = (V))
 #define WRITE16RAM(A, V) do { \
   unsigned int __a = ((A) & 0xFFFF); \
   unsigned int __v = (unsigned int)(V); \
   M68K_RAM[__a] = (unsigned char)(__v & 0xFFu); \
-  M68K_RAM[__a + 1u] = (unsigned char)((__v >> 8) & 0xFFu); \
+  M68K_RAM[(__a + 1u) & 0xFFFF] = (unsigned char)((__v >> 8) & 0xFFu); \
 } while (0)
 #define WRITE32RAM(A, V) do { \
   unsigned int __a = ((A) & 0xFFFF); \
   unsigned int __v = (unsigned int)(V); \
-  M68K_RAM[__a] = (unsigned char)((__v >> 16) & 0xFFu); \
-  M68K_RAM[__a + 1u] = (unsigned char)((__v >> 24) & 0xFFu); \
-  M68K_RAM[__a + 2u] = (unsigned char)(__v & 0xFFu); \
-  M68K_RAM[__a + 3u] = (unsigned char)((__v >> 8) & 0xFFu); \
+  M68K_RAM[__a]                    = (unsigned char)((__v >> 16) & 0xFFu); \
+  M68K_RAM[(__a + 1u) & 0xFFFF]    = (unsigned char)((__v >> 24) & 0xFFu); \
+  M68K_RAM[(__a + 2u) & 0xFFFF]    = (unsigned char)(__v & 0xFFu); \
+  M68K_RAM[(__a + 3u) & 0xFFFF]    = (unsigned char)((__v >> 8) & 0xFFu); \
 } while (0)
 #else
 /* Safe byte-by-byte access to ITCRAM (STM32H7, mapped at 0x0).
