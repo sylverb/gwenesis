@@ -84,6 +84,7 @@ void z80_start() {
 }
 
 void z80_pulse_reset() {
+  Z80_BANK = 0;
   ResetZ80(&cpu);
 }
 static int current_timeslice = 0;
@@ -282,61 +283,75 @@ word LoopZ80(register Z80 *R)
 }
 
 byte RdZ80(register word Addr) {
+  switch((Addr >> 13) & 7)
+  {
+    case 0: /* $0000-$3FFF: Z80 RAM (8K mirrored) */
+    case 1:
+    {
+      return Z80_RAM_BASE[Addr & 0x1FFF];
+    }
 
-  if (Addr < 0x4000)
-    return Z80_RAM_BASE[Addr & 0x1FFF];
+    case 2: /* $4000-$5FFF: YM2612 */
+    {
+      return YM2612Read(zclk + current_timeslice - (cpu.ICount * Z80_FREQ_DIVISOR));
+    }
 
-  if (Addr < 0x6000)
-    return YM2612Read(zclk + current_timeslice - (cpu.ICount * Z80_FREQ_DIVISOR));
+    case 3: /* $6000-$7FFF: bank register / PSG (write-only), open bus on read */
+    {
+      // $6000-$60FF: Bank register which is write-only
+      // $7F00-$7FFF: VDP which should be accessible but
+      //              no game is accessing VDP from Z80 side
+      return 0xFF;
+    }
 
-  z80_log(__FUNCTION__, "addr= %x", Addr);
-
-  if (Addr >= 0x8000)
-    return zbank_mem_r8(Addr);
-
-  z80_log(__FUNCTION__, "addr= %x", Addr);
-
-  return 0xFF;
+    default: /* $8000-$FFFF: 68k bank (32K) */
+    {
+      return zbank_mem_r8(Addr);
+    }
+  }
 }
 
 extern int system_clock;
 
 void WrZ80(register word Addr, register byte Value) {
+  switch((Addr >> 13) & 7)
+  {
+    case 0: /* $0000-$3FFF: Z80 RAM (8K mirrored) */
+    case 1:
+      Z80_RAM_BASE[Addr&0x1FFF] = Value;
+      break;
+    case 2: /* $4000-$5FFF: YM2612 */
+      z80_log("Z80","ZZYM(%x,%x) zk=%d,tgt=%d",Addr&0x3,Value, zclk, zclk + current_timeslice -(cpu.ICount * Z80_FREQ_DIVISOR) );
+      YM2612Write(Addr&0x3, Value, zclk + current_timeslice -(cpu.ICount * Z80_FREQ_DIVISOR) );
+      break;
+    case 3: /* Bank register and VDP */
+      switch(Addr >> 8)
+      {
+        case 0x60: /* $6000-$60FF: Bank register */
+        {
+          zbankreg_mem_w8(Value);
+          return;
+        }
 
-  // ZRAM & mirror
-  if (Addr < 0x4000) {
-    Z80_RAM_BASE[Addr&0x1FFF] = Value;
-    return;
+        case 0x7F: /* $7F00-$7FFF: VDP */
+        {
+          z80_log("Z80","ZZSN zk=%d,tgt=%d", zclk, zclk + current_timeslice -(cpu.ICount * Z80_FREQ_DIVISOR) );
+          gwenesis_SN76489_Write(Value,zclk + current_timeslice -(cpu.ICount * Z80_FREQ_DIVISOR) );
+          return;
+        }
+
+        default:
+        {
+          return;
+        }
+      }
+      break;
+    default: /* $8000-$FFFF: 68k bank (32K) */
+    {
+      zbank_mem_w8(Addr, Value);
+      return;
+    }
   }
-
-  // @4000-4003
-  if (Addr < 0x6000) {
-    z80_log("Z80","ZZYM(%x,%x) zk=%d,tgt=%d",Addr&0x3,Value, zclk, zclk + current_timeslice -(cpu.ICount * Z80_FREQ_DIVISOR) );
-    YM2612Write(Addr&0x3, Value, zclk + current_timeslice -(cpu.ICount * Z80_FREQ_DIVISOR) );
-    return;
-  }
-
-  // @6000
-  if (Addr == 0x6000) {
-    zbankreg_mem_w8(Value);
-    return;
-  }
-
-  // @7F11
-  if (Addr ==  0x7F11) {
-    z80_log("Z80","ZZSN zk=%d,tgt=%d", zclk, zclk + current_timeslice -(cpu.ICount * Z80_FREQ_DIVISOR) );
-    gwenesis_SN76489_Write(Value,zclk + current_timeslice -(cpu.ICount * Z80_FREQ_DIVISOR) );
-    return;
-  }
- 
-  z80_log("Z80","WrZ80  %x %x", Addr, Value);
-
-  if (Addr >= 0x8000) {
-    zbank_mem_w8(Addr, Value);
-    return;
-  }
-  z80_log("Z80","WrZ80  %x %x", Addr, Value);
-
 }
 
 
@@ -368,5 +383,6 @@ void gwenesis_z80inst_load_state(FILE *file) {
     fread((unsigned char *)&zclk, 4, 1, file);
     fread((unsigned char *)&initialized, 4, 1, file);
     fread((unsigned char *)&Z80_BANK, 4, 1, file);
+    Z80_BANK &= 0x1FF;
     fread((unsigned char *)&current_timeslice, 4, 1, file);
 }
