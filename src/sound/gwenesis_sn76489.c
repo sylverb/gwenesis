@@ -56,17 +56,27 @@
 //   0                             /*  OFF  */
 // };
 
-#define PSG_MAX_VOLUME_MAX 3100
-#define PSG_MAX_VOLUME_2dB (int)(PSG_MAX_VOLUME_MAX*0.794328234)
-#define PSG_MAX_VOLUME_4dB (int)(PSG_MAX_VOLUME_MAX*0.630957344)
+/* Correct SN76489 volume table: 16 levels, -2dB per step (matches real hardware) */
+#define PSG_MAX_VOLUME 3100
 
 static const int PSGVolumeValues[16] = {
-	PSG_MAX_VOLUME_MAX   ,PSG_MAX_VOLUME_2dB   ,PSG_MAX_VOLUME_4dB,
-    PSG_MAX_VOLUME_MAX/2 ,PSG_MAX_VOLUME_2dB/2 ,PSG_MAX_VOLUME_4dB/2,
-    PSG_MAX_VOLUME_MAX/4 ,PSG_MAX_VOLUME_2dB/4 ,PSG_MAX_VOLUME_4dB/4,
-    PSG_MAX_VOLUME_MAX/8 ,PSG_MAX_VOLUME_2dB/8 ,PSG_MAX_VOLUME_4dB/8,
-    PSG_MAX_VOLUME_MAX/16,PSG_MAX_VOLUME_2dB/16,PSG_MAX_VOLUME_4dB/16,
-    0};
+  PSG_MAX_VOLUME,                          /*  0: MAX    */
+  (int)(PSG_MAX_VOLUME * 0.794328234),     /*  1: -2dB   */
+  (int)(PSG_MAX_VOLUME * 0.630957344),     /*  2: -4dB   */
+  (int)(PSG_MAX_VOLUME * 0.501187233),     /*  3: -6dB   */
+  (int)(PSG_MAX_VOLUME * 0.398107170),     /*  4: -8dB   */
+  (int)(PSG_MAX_VOLUME * 0.316227766),     /*  5: -10dB  */
+  (int)(PSG_MAX_VOLUME * 0.251188643),     /*  6: -12dB  */
+  (int)(PSG_MAX_VOLUME * 0.199526231),     /*  7: -14dB  */
+  (int)(PSG_MAX_VOLUME * 0.158489319),     /*  8: -16dB  */
+  (int)(PSG_MAX_VOLUME * 0.125892541),     /*  9: -18dB  */
+  (int)(PSG_MAX_VOLUME * 0.1),             /* 10: -20dB  */
+  (int)(PSG_MAX_VOLUME * 0.079432823),     /* 11: -22dB  */
+  (int)(PSG_MAX_VOLUME * 0.063095734),     /* 12: -24dB  */
+  (int)(PSG_MAX_VOLUME * 0.050118723),     /* 13: -26dB  */
+  (int)(PSG_MAX_VOLUME * 0.039810717),     /* 14: -28dB  */
+  0                                        /* 15: OFF    */
+};
 
 static SN76489_Context gwenesis_SN76489;
 
