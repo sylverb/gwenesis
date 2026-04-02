@@ -20,6 +20,7 @@ __license__ = "GPLv3"
 #define _gwenesis_io_H_
 
 #pragma once
+extern unsigned char button_state[3];
 
 void gwenesis_io_pad_press_button(int pad, int button);
 void gwenesis_io_pad_release_button(int pad, int button);
