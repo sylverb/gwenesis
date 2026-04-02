@@ -2127,11 +2127,7 @@ void YM2612Update(int *buffer, int length)
 #endif
 {
   int i;
-#ifdef TARGET_GNW
-  int lt;
-#else
   int lt,rt;
-#endif
 
   /* refresh PG increments and EG rates if required */
   refresh_fc_eg_chan(&ym2612.CH[0]);
@@ -2217,48 +2213,7 @@ void YM2612Update(int *buffer, int length)
     if (out_fm[5] > 8191) out_fm[5] = 8191;
     else if (out_fm[5] < -8192) out_fm[5] = -8192;
 
-    /* channels outputs mixing */
-#ifdef TARGET_GNW
     /* stereo DAC output panning & mixing  */
-    lt  = (out_fm[0] & ym2612.OPN.pan[0])/2;
-    lt += (out_fm[0] & ym2612.OPN.pan[1])/2;
-    lt += (out_fm[1] & ym2612.OPN.pan[2])/2;
-    lt += (out_fm[1] & ym2612.OPN.pan[3])/2;
-    lt += (out_fm[2] & ym2612.OPN.pan[4])/2;
-    lt += (out_fm[2] & ym2612.OPN.pan[5])/2;
-    lt += (out_fm[3] & ym2612.OPN.pan[6])/2;
-    lt += (out_fm[3] & ym2612.OPN.pan[7])/2;
-    lt += (out_fm[4] & ym2612.OPN.pan[8])/2;
-    lt += (out_fm[4] & ym2612.OPN.pan[9])/2;
-    lt += (out_fm[5] & ym2612.OPN.pan[10])/2;
-    lt += (out_fm[5] & ym2612.OPN.pan[11])/2;
-
-    /* discrete YM2612 DAC */
-    if (chip_type == YM2612_DISCRETE)
-    {
-      int i;
-
-      /* DAC 'ladder effect' */
-      for (i=0; i<6; i++)
-      {
-        if (out_fm[i] < 0)
-        {
-          /* -4 offset (-3 when not muted) on negative channel output (9-bit) */
-          lt -= ((4 - (ym2612.OPN.pan[(2*i)+0] & 1)) << 5)/2;
-          lt -= ((4 - (ym2612.OPN.pan[(2*i)+1] & 1)) << 5)/2;
-        }
-        else
-        {
-          /* +4 offset (when muted or not) on positive channel output (9-bit) */
-          lt += (4 << 5);
-        }
-      }
-    }
-
-    /* buffering (mono) */
-    *buffer++ = (int16_t)lt;
-#else
-    /* stereo DAC channels outputs mixing  */
     lt  = ((out_fm[0]) & ym2612.OPN.pan[0]);
     rt  = ((out_fm[0]) & ym2612.OPN.pan[1]);
     lt += ((out_fm[1]) & ym2612.OPN.pan[2]);
@@ -2294,7 +2249,10 @@ void YM2612Update(int *buffer, int length)
         }
       }
     }
-
+#ifdef TARGET_GNW
+    /* buffering (mono) */
+    *buffer++ = (int16_t)((lt + rt) / 2);
+#else
     /* buffering (stereo) */
     *buffer++ = lt;
     *buffer++ = rt;
