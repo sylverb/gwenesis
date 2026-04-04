@@ -975,19 +975,21 @@ void gwenesis_bus_save_state(FILE *file) {
   }
 }
 
-void gwenesis_bus_load_state(FILE *file) {
+void gwenesis_bus_load_state(FILE *file, int ss_version) {
   fread((unsigned char *)M68K_RAM, MAX_RAM_SIZE, 1, file);
   fread((unsigned char *)ZRAM, MAX_Z80_RAM_SIZE, 1, file);
   fread((unsigned char *)TMSS, sizeof(TMSS), 1, file);
   fread((unsigned char *)&tmss_state, 4, 1, file);
   fread((unsigned char *)&tmss_count, 4, 1, file);
-  /* SRAM */
-  if (gwenesis_sram_enabled) {
-    fread((unsigned char *)&gwenesis_sram_active,         4, 1, file);
-    fread((unsigned char *)&gwenesis_sram_write_protect,  4, 1, file);
-  }
-  /* SSF2 mapper */
-  if (gwenesis_ssf2_enabled) {
-    fread((unsigned char *)gwenesis_ssf2_banks, sizeof(gwenesis_ssf2_banks), 1, file);
+  if (ss_version >= 1) {
+    /* SRAM */
+    if (gwenesis_sram_enabled) {
+      fread((unsigned char *)&gwenesis_sram_active,         4, 1, file);
+      fread((unsigned char *)&gwenesis_sram_write_protect,  4, 1, file);
+    }
+    /* SSF2 mapper */
+    if (gwenesis_ssf2_enabled) {
+      fread((unsigned char *)gwenesis_ssf2_banks, sizeof(gwenesis_ssf2_banks), 1, file);
+    }
   }
 }

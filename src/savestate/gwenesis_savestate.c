@@ -34,6 +34,36 @@ __license__ = "GPLv3"
 
 #include <assert.h>
 
+int gwenesis_savestate_version_from_header(const unsigned char header[GWENESIS_SAVESTATE_HEADER_SIZE])
+{
+  if (memcmp(header, GWENESIS_SAVESTATE_HEADER_PREFIX, GWENESIS_SAVESTATE_HEADER_PREFIX_LEN) == 0) {
+    int i;
+    int n = 0;
+    for (i = 4; i < GWENESIS_SAVESTATE_HEADER_SIZE; i++) {
+      if (header[i] < '0' || header[i] > '9')
+        return 0;
+      n = n * 10 + (header[i] - '0');
+    }
+    return n;
+  }
+  return 0;
+}
+
+void gwenesis_savestate_write_file_header(FILE *file)
+{
+  unsigned char h[GWENESIS_SAVESTATE_HEADER_SIZE];
+  int v = GWENESIS_SAVESTATE_CURRENT_VERSION;
+  memcpy(h, GWENESIS_SAVESTATE_HEADER_PREFIX, GWENESIS_SAVESTATE_HEADER_PREFIX_LEN);
+  h[7] = (unsigned char)('0' + (v % 10));
+  v /= 10;
+  h[6] = (unsigned char)('0' + (v % 10));
+  v /= 10;
+  h[5] = (unsigned char)('0' + (v % 10));
+  v /= 10;
+  h[4] = (unsigned char)('0' + (v % 10));
+  fwrite(h, 1, sizeof(h), file);
+}
+
 void gwenesis_save_state(FILE *file) {
   gwenesis_m68k_save_state(file);
   gwenesis_io_save_state(file);
@@ -45,13 +75,13 @@ void gwenesis_save_state(FILE *file) {
   gwenesis_sn76489_save_state(file);
 }
 
-void gwenesis_load_state(FILE *file) {
-  gwenesis_m68k_load_state(file);
-  gwenesis_io_load_state(file);
-  gwenesis_bus_load_state(file);
-  gwenesis_vdp_gfx_load_state(file);
-  gwenesis_vdp_mem_load_state(file);
-  gwenesis_z80inst_load_state(file);
-  gwenesis_ym2612_load_state(file);
-  gwenesis_sn76489_load_state(file);
+void gwenesis_load_state(FILE *file, int ss_version) {
+  gwenesis_m68k_load_state(file, ss_version);
+  gwenesis_io_load_state(file, ss_version);
+  gwenesis_bus_load_state(file, ss_version);
+  gwenesis_vdp_gfx_load_state(file, ss_version);
+  gwenesis_vdp_mem_load_state(file, ss_version);
+  gwenesis_z80inst_load_state(file, ss_version);
+  gwenesis_ym2612_load_state(file, ss_version);
+  gwenesis_sn76489_load_state(file, ss_version);
 }

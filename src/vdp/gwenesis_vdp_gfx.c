@@ -1293,7 +1293,8 @@ void gwenesis_vdp_gfx_save_state(FILE *file) {
   fwrite((unsigned char *)&Window_lastcol, 4, 1, file);
 }
 
-void gwenesis_vdp_gfx_load_state(FILE *file) {
+void gwenesis_vdp_gfx_load_state(FILE *file, int ss_version) {
+  (void)ss_version;
   fread((unsigned char *)render_buffer, sizeof(render_buffer), 1, file);
   fread((unsigned char *)sprite_buffer, sizeof(sprite_buffer), 1, file);
   fread((unsigned char *)&mode_h40, 4, 1, file);

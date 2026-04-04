@@ -32,6 +32,6 @@ void gwenesis_io_set_reg(unsigned int reg, unsigned int value);
 void gwenesis_io_get_buttons();
 
 void gwenesis_io_save_state(FILE *file);
-void gwenesis_io_load_state(FILE *file);
+void gwenesis_io_load_state(FILE *file, int ss_version);
 
 #endif

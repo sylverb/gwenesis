@@ -267,6 +267,7 @@ void gwenesis_sn76489_save_state(FILE *file) {
     fwrite((unsigned char *)&gwenesis_SN76489, sizeof(gwenesis_SN76489), 1, file);
 }
 
-void gwenesis_sn76489_load_state(FILE *file) {
+void gwenesis_sn76489_load_state(FILE *file, int ss_version) {
+    (void)ss_version;
     fread((unsigned char *)&gwenesis_SN76489, sizeof(gwenesis_SN76489), 1, file);
 }

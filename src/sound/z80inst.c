@@ -361,25 +361,25 @@ void PatchZ80(register Z80 *R) {;}
 void DebugZ80(register Z80 *R) {;}
 
 void gwenesis_z80inst_save_state(FILE *file) {
-    uint32_t dummy = 0;
     fwrite((unsigned char *)&cpu, sizeof(Z80), 1, file);
 
     fwrite((unsigned char *)&bus_ack, 4, 1, file);
     fwrite((unsigned char *)&reset, 4, 1, file);
-    fwrite((unsigned char *)&dummy, 4, 1, file);
     fwrite((unsigned char *)&zclk, 4, 1, file);
     fwrite((unsigned char *)&initialized, 4, 1, file);
     fwrite((unsigned char *)&Z80_BANK, 4, 1, file);
     fwrite((unsigned char *)&current_timeslice, 4, 1, file);
 }
 
-void gwenesis_z80inst_load_state(FILE *file) {
-    uint32_t dummy = 0;
+void gwenesis_z80inst_load_state(FILE *file, int ss_version) {
     fread((unsigned char *)&cpu, sizeof(Z80), 1, file);
 
     fread((unsigned char *)&bus_ack, 4, 1, file);
     fread((unsigned char *)&reset, 4, 1, file);
-    fread((unsigned char *)&dummy, 4, 1, file); // For compatibility with old savestates
+    if (ss_version == 0) {
+      uint32_t dummy = 0;
+      fread((unsigned char *)&dummy, 4, 1, file); // For compatibility with old savestates
+    }
     fread((unsigned char *)&zclk, 4, 1, file);
     fread((unsigned char *)&initialized, 4, 1, file);
     fread((unsigned char *)&Z80_BANK, 4, 1, file);

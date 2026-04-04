@@ -526,7 +526,7 @@
 /* ======================================================================== */
 
 void gwenesis_m68k_save_state(FILE *file);
-void gwenesis_m68k_load_state(FILE *file);
+void gwenesis_m68k_load_state(FILE *file, int ss_version);
 
 /* ----------------------------- Read / Write ----------------------------- */
 

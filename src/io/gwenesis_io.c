@@ -230,7 +230,8 @@ void gwenesis_io_save_state(FILE *file) {
     fwrite(io_reg, sizeof(io_reg), 1, file);
 }
 
-void gwenesis_io_load_state(FILE *file) {
+void gwenesis_io_load_state(FILE *file, int ss_version) {
+    (void)ss_version;
     fread(button_state, sizeof(button_state), 1, file);
     fread(gwenesis_io_pad_state, sizeof(gwenesis_io_pad_state), 1, file);
     fread(io_reg, sizeof(io_reg), 1, file);

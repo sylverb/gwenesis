@@ -29,7 +29,7 @@ void z80_run(int target);
 extern int zclk;
 
 void gwenesis_z80inst_save_state(FILE *file);
-void gwenesis_z80inst_load_state(FILE *file);
+void gwenesis_z80inst_load_state(FILE *file, int ss_version);
 
 void z80_set_memory(unsigned char *buffer);
 

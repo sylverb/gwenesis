@@ -68,6 +68,6 @@ void gwenesis_SN76489_Write(int data, int target);
 void gwenesis_SN76489_run(int target);
 
 void gwenesis_sn76489_save_state(FILE *file);
-void gwenesis_sn76489_load_state(FILE *file);
+void gwenesis_sn76489_load_state(FILE *file, int ss_version);
 
 #endif /* _GWENESIS_SN76489_H_ */

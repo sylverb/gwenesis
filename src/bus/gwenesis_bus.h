@@ -128,6 +128,6 @@ extern int           gwenesis_ssf2_enabled;  /* 1 = SSF2 mapper active */
 extern unsigned char gwenesis_ssf2_banks[8]; /* logical slot → physical 512 KB page */
 
 void gwenesis_bus_save_state(FILE *file);
-void gwenesis_bus_load_state(FILE *file);
+void gwenesis_bus_load_state(FILE *file, int ss_version);
 
 #endif

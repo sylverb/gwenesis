@@ -434,7 +434,8 @@ void gwenesis_m68k_save_state(FILE *file) {
   fwrite((unsigned char *)&m68k.stopped, 4, 1, file);
 }
 
-void gwenesis_m68k_load_state(FILE *file) {
+void gwenesis_m68k_load_state(FILE *file, int ss_version) {
+  (void)ss_version;
   fread((unsigned char *)REG_D, sizeof(REG_D), 1, file);
   {
     unsigned int sr;

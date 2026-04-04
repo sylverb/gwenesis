@@ -2349,8 +2349,60 @@ void ym2612_run(int target)
   }
 }
 
+/* Row index 0..7 into ym2612.OPN.ST.dt_tab for SLOT->DT (same scaling as YM2612SaveContext). */
+static uint8_t ym2612_encode_dt_index(const FM_SLOT *slot)
+{
+  ptrdiff_t d;
+
+  if (slot->DT == NULL)
+    return 0;
+  d = slot->DT - ym2612.OPN.ST.dt_tab[0];
+  if (d < 0 || d > (ptrdiff_t)(7 * 32))
+    return 0;
+  return (uint8_t)((d >> 5) & 7);
+}
+
+/* Pointers inside ym2612 (DT, connect*) are not portable. ss_version==0: rebuild DT from OPNREGS; v1+ DT set from saved indices before this. */
+static void ym2612_restore_runtime_pointers_after_load(int ss_version)
+{
+  int r;
+  int c;
+
+  if (ss_version == 0) {
+    for (r = 0x30; r < 0x100; r++) {
+      UINT8 ch = OPN_CHAN(r);
+      if (ch == 3)
+        continue;
+      if ((r & 0xf0) != 0x30)
+        continue;
+      {
+        FM_CH *CH = &ym2612.CH[ch];
+        FM_SLOT *SLOT = &(CH->SLOT[OPN_SLOT(r)]);
+        set_det_mul(CH, SLOT, OPNREGS[r]);
+      }
+    }
+    for (r = 0x130; r < 0x200; r++) {
+      UINT8 ch = OPN_CHAN(r);
+      if (ch == 3)
+        continue;
+      if ((r & 0xf0) != 0x30)
+        continue;
+      ch += 3;
+      {
+        FM_CH *CH = &ym2612.CH[ch];
+        FM_SLOT *SLOT = &(CH->SLOT[OPN_SLOT(r)]);
+        set_det_mul(CH, SLOT, OPNREGS[r]);
+      }
+    }
+  }
+  for (c = 0; c < 6; c++)
+    setup_connection(&ym2612.CH[c], c);
+}
+
 void gwenesis_ym2612_save_state(FILE *file)
 {
+  int c, s;
+
   fwrite((unsigned char *)&ym2612,   sizeof(ym2612),   1, file);
   fwrite((unsigned char *)&m2,       4,                1, file);
   fwrite((unsigned char *)&c1,       4,                1, file);
@@ -2359,18 +2411,44 @@ void gwenesis_ym2612_save_state(FILE *file)
   fwrite((unsigned char *)out_fm,    sizeof(out_fm),   1, file);
   fwrite((unsigned char *)&bitmask,  4,                1, file);
   fwrite((unsigned char *)OPNREGS,   sizeof(OPNREGS),  1, file);
+  for (c = 0; c < 6; c++) {
+    for (s = 0; s < 4; s++) {
+      uint8_t idx = ym2612_encode_dt_index(&ym2612.CH[c].SLOT[s]);
+      fwrite(&idx, 1, 1, file);
+    }
+  }
 }
 
-void gwenesis_ym2612_load_state(FILE *file)
+void gwenesis_ym2612_load_state(FILE *file, int ss_version)
 {
+  int c, s;
+
   fread((unsigned char *)&ym2612,    sizeof(ym2612),   1, file);
   fread((unsigned char *)&m2,        4,                1, file);
   fread((unsigned char *)&c1,        4,                1, file);
   fread((unsigned char *)&c2,        4,                1, file);
   fread((unsigned char *)&mem,       4,                1, file);
-  fread((unsigned char *)out_fm,     sizeof(out_fm),   1, file);
+  if (ss_version == 0) {
+    uint32_t dummy = 0;
+    // previously INT32  out_fm[8];, now INT32  out_fm[6]
+    fread((unsigned char *)out_fm, sizeof(out_fm),   1, file);
+    fread((unsigned char *)&dummy, sizeof(uint32_t), 1, file); // For compatibility with old savestates
+    fread((unsigned char *)&dummy, sizeof(uint32_t), 1, file); // For compatibility with old savestates
+  } else {
+    fread((unsigned char *)out_fm, sizeof(out_fm), 1, file);
+  }
   fread((unsigned char *)&bitmask,   4,                1, file);
   fread((unsigned char *)OPNREGS,    sizeof(OPNREGS),  1, file);
+  if (ss_version >= 1) {
+    for (c = 0; c < 6; c++) {
+      for (s = 0; s < 4; s++) {
+        uint8_t idx;
+        fread(&idx, 1, 1, file);
+        ym2612.CH[c].SLOT[s].DT = ym2612.OPN.ST.dt_tab[idx & 7];
+      }
+    }
+  }
+  ym2612_restore_runtime_pointers_after_load(ss_version);
 }
 
 #else

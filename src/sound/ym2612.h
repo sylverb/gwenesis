@@ -45,7 +45,7 @@ extern unsigned int YM2612Read(void);
 #endif
 #ifdef TARGET_GNW
 void gwenesis_ym2612_save_state(FILE *file);
-void gwenesis_ym2612_load_state(FILE *file);
+void gwenesis_ym2612_load_state(FILE *file, int ss_version);
 #else
 extern int YM2612LoadContext(unsigned char *state);
 extern int YM2612SaveContext(unsigned char *state);
