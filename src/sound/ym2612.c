@@ -156,6 +156,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <stddef.h>
 
 #include "ym2612.h"
 #include "gwenesis_bus.h"
