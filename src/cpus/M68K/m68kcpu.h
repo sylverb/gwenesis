@@ -530,15 +530,16 @@ void gwenesis_m68k_load_state(FILE *file, int ss_version);
 
 /* ----------------------------- Read / Write ----------------------------- */
 
-/*** BZHXX ***/
 /* Read data immediately following the PC */
+#define m68k_read_immediate_16(address) (*(m68k.memory_map[((address) >> 16) & 0xff].read16))((address) & 0xffffffu)
 //#define m68k_read_immediate_16(address) *(uint16 *)(m68ki_cpu.memory_map[((address)>>16)&0xff].base + ((address) & 0xffff))
-//#define m68k_read_immediate_32(address) (m68k_read_immediate_16(address) << 16) | (m68k_read_immediate_16(address+2))
+#define m68k_read_immediate_32(address) (m68k_read_immediate_16(address) << 16) | (m68k_read_immediate_16(address+2))
 
 /* Read data relative to the PC */
+#define m68k_read_pcrelative_8(address) (*(m68k.memory_map[((address) >> 16) & 0xff].read8))((address) & 0xffffffu)
 //#define m68k_read_pcrelative_8(address)  READ_BYTE(m68ki_cpu.memory_map[((address)>>16)&0xff].base, (address) & 0xffff)
-//#define m68k_read_pcrelative_16(address) m68k_read_immediate_16(address)
-//#define m68k_read_pcrelative_32(address) m68k_read_immediate_32(address)
+#define m68k_read_pcrelative_16(address) m68k_read_immediate_16(address)
+#define m68k_read_pcrelative_32(address) m68k_read_immediate_32(address)
 
 /* map read immediate 8 to read immediate 16 */
 #define m68ki_read_imm_8() MASK_OUT_ABOVE_8(m68ki_read_imm_16())
@@ -854,69 +855,6 @@ INLINE uint m68ki_read_imm_32(void)
  * These functions will also check for address error and set the function
  * code if they are enabled in m68kconf.h.
  */
- /*** BZHXX ***/
-
-INLINE uint m68ki_read_8(uint address)
-{
-
-  m68ki_set_fc(FLAG_S | m68ki_get_address_space()) /* auto-disable (see m68kcpu.h) */
-
-	if (ADDRESS_68K(address) >= 0xFF0000) return FETCH8RAM(ADDRESS_68K(address));
-	return m68k_read_memory_8(ADDRESS_68K(address));
-
-}
-
-INLINE uint m68ki_read_16(uint address)
-{
-
-  m68ki_set_fc(FLAG_S | m68ki_get_address_space()) /* auto-disable (see m68kcpu.h) */
- 
-	if (ADDRESS_68K(address) >= 0xFF0000) return FETCH16RAM(ADDRESS_68K(address));
-	return m68k_read_memory_16(ADDRESS_68K(address));
-
-}
-
-INLINE uint m68ki_read_32(uint address)
-{
-
-  m68ki_set_fc(FLAG_S | m68ki_get_address_space()) /* auto-disable (see m68kcpu.h) */
-
-	if (ADDRESS_68K(address) >= 0xFF0000) return FETCH32RAM(ADDRESS_68K(address));
-	return m68k_read_memory_32(ADDRESS_68K(address));
-}
-
-INLINE void m68ki_write_8(uint address, uint value)
-{
-
-  m68ki_set_fc(FLAG_S | FUNCTION_CODE_USER_DATA) /* auto-disable (see m68kcpu.h) */
-        if (ADDRESS_68K(address) >= 0xFF0000) {
-          WRITE8RAM(ADDRESS_68K(address), value);
-        } else
-        m68k_write_memory_8(ADDRESS_68K(address), value);
-}
-
-INLINE void m68ki_write_16(uint address, uint value)
-{
-
-  m68ki_set_fc(FLAG_S | FUNCTION_CODE_USER_DATA) /* auto-disable (see m68kcpu.h) */
-        if (ADDRESS_68K(address) >= 0xFF0000) {
-          WRITE16RAM(ADDRESS_68K(address), value);
-        } else
-	m68k_write_memory_16(ADDRESS_68K(address), value);
-}
-
-INLINE void m68ki_write_32(uint address, uint value)
-{
-
-  m68ki_set_fc(FLAG_S | FUNCTION_CODE_USER_DATA) /* auto-disable (see m68kcpu.h) */
-        if (ADDRESS_68K(address) >= 0xFF0000) {
-          WRITE32RAM(ADDRESS_68K(address), value);
-        } else
-	m68k_write_memory_32(ADDRESS_68K(address), value);
-}
-
-
-#if 0
 INLINE uint m68ki_read_8(uint address)
 {
   cpu_memory_map *temp = &m68ki_cpu.memory_map[((address)>>16)&0xff];
@@ -942,7 +880,7 @@ INLINE uint m68ki_read_16(uint address)
 
   m68ki_set_fc(FLAG_S | m68ki_get_address_space()) /* auto-disable (see m68kcpu.h) */
   m68ki_check_address_error(address, MODE_READ, FLAG_S | m68ki_get_address_space()) /* auto-disable (see m68kcpu.h) */
-  
+
   temp = &m68ki_cpu.memory_map[((address)>>16)&0xff];
   if (temp->read16) val = (*temp->read16)(ADDRESS_68K(address));
   else val = *(uint16 *)(temp->base + ((address) & 0xffff));
@@ -964,8 +902,12 @@ INLINE uint m68ki_read_32(uint address)
   m68ki_check_address_error(address, MODE_READ, FLAG_S | m68ki_get_address_space()) /* auto-disable (see m68kcpu.h) */
 
   temp = &m68ki_cpu.memory_map[((address)>>16)&0xff];
-  if (temp->read16) val = ((*temp->read16)(ADDRESS_68K(address)) << 16) | ((*temp->read16)(ADDRESS_68K(address + 2)));
-  else val = m68k_read_immediate_32(address);
+  if (temp->read16) val = (*temp->read16)(ADDRESS_68K(address)) << 16;
+  else val = m68k_read_immediate_16(address) << 16;
+
+  temp = &m68ki_cpu.memory_map[((address+2)>>16)&0xff];
+  if (temp->read16) val |= (*temp->read16)(ADDRESS_68K(address+2));
+  else val |= m68k_read_immediate_16(address+2);
 
 #ifdef HOOK_CPU
   if (cpu_hook)
@@ -1028,7 +970,6 @@ INLINE void m68ki_write_32(uint address, uint value)
   if (temp->write16) (*temp->write16)(ADDRESS_68K(address+2),value&0xffff);
   else *(uint16 *)(temp->base + ((address + 2) & 0xffff)) = value;
 }
-#endif
 
 /* --------------------- Effective Address Calculation -------------------- */
 

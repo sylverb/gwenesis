@@ -59,28 +59,12 @@ __license__ = "GPLv3"
 #define GWENESIS_AUDIO_BUFFER_LENGTH_NTSC 888
 #define GWENESIS_AUDIO_BUFFER_LENGTH_PAL 1056
 
-/* Audio buffer length */
+/* 1 = printf each SSF2 bank write + OOB check vs ROM size (add -D to CFLAGS) */
+#ifndef GWENESIS_DEBUG_SSF2_MAPPER
+#define GWENESIS_DEBUG_SSF2_MAPPER 1
+#endif
 
-enum mapped_address
-{
-    NONE = 0,
-    ROM_ADDR,
-    ROM_ADDR_MIRROR,
-    Z80_RAM_ADDR,
-    Z80_RAM_ADDR1K,
-    Z80_YM2612_ADDR,
-    Z80_BANK_ADDR,
-    Z80_VDP_ADDR,
-    Z80_SN76489_ADDR,
-    IO_CTRL,
-    Z80_CTRL,
-    TMSS_CTRL,
-    VDP_ADDR,
-    RAM_ADDR,
-    SRAM_ADDR,
-    SRAM_CTRL,
-    SSF2_BANK_CTRL  /* Super Street Fighter II bankswitching registers 0xA130F3..0xA130FF */
-};
+/* Audio buffer length */
 
 enum gwenesis_bus_pad_button
 {
@@ -126,6 +110,18 @@ extern unsigned int gwenesis_sram_end;     /* last  mapped address */
  */
 extern int           gwenesis_ssf2_enabled;  /* 1 = SSF2 mapper active */
 extern unsigned char gwenesis_ssf2_banks[8]; /* logical slot → physical 512 KB page */
+extern int           gwenesis_quackshot_map; /* 1 = QuackShot Rev A custom wiring */
+
+/* Initialise the M68K memory_map table.
+ * Must be called after load_cartridge() (SRAM/SSF2 flags are used)
+ * and before reset_emulation() / m68k_pulse_reset(). */
+void gwenesis_bus_init_memory_map(void);
+
+/* Update ROM slots in memory_map after an SSF2 bank register write. */
+void gwenesis_bus_ssf2_update_memory_map(void);
+
+/* Update the SRAM overlay in memory_map (called when 0xA130F1 changes). */
+void gwenesis_bus_sram_update_memory_map(void);
 
 void gwenesis_bus_save_state(FILE *file);
 void gwenesis_bus_load_state(FILE *file, int ss_version);

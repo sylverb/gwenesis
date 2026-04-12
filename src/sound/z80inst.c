@@ -242,13 +242,22 @@ static inline void zbankreg_mem_w8(unsigned int value) {
   return;
 }
 
+/* Exported wrapper — called from gwenesis_bus.c 0xA06000 write handler */
+void z80_bank_register_write(unsigned int value)
+{
+  zbankreg_mem_w8(value);
+}
+
 static inline unsigned int zbank_mem_r8(unsigned int address)
 {
     address &= 0x7FFF;
     address |= (Z80_BANK << 15);
 
     z80_log(__FUNCTION__,"Z80 bank read: %06x", address);
-    return m68k_read_memory_8(address);
+    cpu_memory_map *m = &m68k.memory_map[(address >> 16) & 0xFF];
+    if (m->read8) return (*m->read8)(address & 0xFFFFFF);
+    if (m->base)  return READ_BYTE(m->base, address & 0xFFFF);
+    return 0xFF;
 }
 
 static inline void zbank_mem_w8(unsigned int address, unsigned int value) {
@@ -256,8 +265,9 @@ static inline void zbank_mem_w8(unsigned int address, unsigned int value) {
   address |= (Z80_BANK << 15);
 
   z80_log(__FUNCTION__,"Z80 bank write %06x: %02x", address, value);
-  m68k_write_memory_8(address, value);
-
+  cpu_memory_map *m = &m68k.memory_map[(address >> 16) & 0xFF];
+  if (m->write8) (*m->write8)(address & 0xFFFFFF, value);
+  else if (m->base) WRITE_BYTE(m->base, address & 0xFFFF, value);
 }
 
 // TODO ??

@@ -160,55 +160,12 @@
 
 	extern unsigned char ROM_DATA[];
 	extern unsigned char M68K_RAM[];
+	/* On desktop the ROM is always fully loaded, so bounds-check always passes */
+	static inline unsigned int gwenesis_rom_data_length(void) { return 0xFFFFFFFFu; }
+	#define ROM_DATA_LENGTH gwenesis_rom_data_length()
+
 #endif
 
-/* SSF2 bankswitching mapper support.
- * The 4 MB logical ROM space (0x000000-0x3FFFFF) is split into 8 slots of
- * 512 KB. gwenesis_ssf2_banks[slot] gives the physical 512 KB page number.
- * Slot 0 is always fixed to page 0; slots 1-7 are remappable at runtime via
- * writes to 0xA130F3..0xA130FF.
- * Declaring these here (rather than in gwenesis_bus.h) ensures that ALL ROM
- * fetch paths — opcodes, immediates, PC-relative — apply the translation. */
-extern int           gwenesis_ssf2_enabled;
-extern unsigned char gwenesis_ssf2_banks[8];
-
-static inline unsigned int gwenesis_ssf2_rom_phys(unsigned int a) {
-    unsigned int masked = a & 0x3FFFFFu;
-    unsigned int slot   = masked >> 19;          /* 512 KB window index (0-7) */
-    unsigned int offset = masked & 0x7FFFFu;     /* byte offset within window */
-    return ((unsigned int)gwenesis_ssf2_banks[slot] << 19) | offset;
-}
-
-#define ROM_READ8_IDX(I) ((I) < ROM_DATA_LENGTH ? ROM_DATA[(I)] : 0u)
-
-#define FETCH8ROM(A) \
-    (gwenesis_ssf2_enabled \
-        ? ROM_READ8_IDX(gwenesis_ssf2_rom_phys(A) ^ 1u) \
-        : ROM_READ8_IDX((((A) & 0x3FFFFFu) ^ 1u)))
-
-#if defined(LINUX_EMU)
-#define FETCH16ROM(A) \
-    (gwenesis_ssf2_enabled \
-        ? ( (unsigned int)ROM_READ8_IDX(gwenesis_ssf2_rom_phys(A)) \
-          | ((unsigned int)ROM_READ8_IDX(gwenesis_ssf2_rom_phys((A) + 1u)) << 8) ) \
-        : ( (unsigned int)ROM_READ8_IDX(((A) & 0x3FFFFFu)) \
-          | ((unsigned int)ROM_READ8_IDX((((A) + 1u) & 0x3FFFFFu)) << 8) ))
-
-#define FETCH32ROM(A) \
-    ( ((unsigned int)FETCH16ROM(A) << 16) | (unsigned int)FETCH16ROM((A) + 2u) )
-#else
-/* Safe byte-by-byte access — avoids unaligned word/dword casts that can
- * trigger a hardfault */
-#define FETCH16ROM(A) \
-    (gwenesis_ssf2_enabled \
-        ? ( (unsigned int)ROM_DATA[gwenesis_ssf2_rom_phys(A)] \
-          | ((unsigned int)ROM_DATA[gwenesis_ssf2_rom_phys((A) + 1u)] << 8) ) \
-        : ( (unsigned int)ROM_DATA[((A) & 0x3FFFFFu)] \
-          | ((unsigned int)ROM_DATA[(((A) + 1u) & 0x3FFFFFu)] << 8) ))
-
-#define FETCH32ROM(A) \
-    ( ((unsigned int)FETCH16ROM(A) << 16) | (unsigned int)FETCH16ROM((A) + 2u) )
-#endif
 
 #ifdef TARGET_GNW
 
@@ -295,36 +252,10 @@ static inline unsigned int gwenesis_ssf2_rom_phys(unsigned int a) {
 
 #endif
 
-#define m68k_read_immediate_16(A) ( ( (A) & 0x800000) ? FETCH16RAM((A)) : FETCH16ROM((A)) )
-#define m68k_read_immediate_32(A) ( ( (A) & 0x800000) ? FETCH32RAM((A)) : FETCH32ROM((A)) )
-
-#define m68k_read_pcrelative_8(A) ( FETCH8ROM((A)) )
-#define m68k_read_pcrelative_16(A) ( FETCH16ROM((A)) )
-#define m68k_read_pcrelative_32(A) ( FETCH32ROM((A)) )
-
-/* Read from anywhere */
-unsigned int  m68k_read_memory_8(unsigned int address);
-unsigned int  m68k_read_memory_16(unsigned int address);
-unsigned int  m68k_read_memory_32(unsigned int address);
-
-/* Read data immediately following the PC */
-// unsigned int  m68k_read_immediate_16(unsigned int address);
-// unsigned int  m68k_read_immediate_32(unsigned int address);
-
-/* Read data relative to the PC */
-//unsigned int  m68k_read_pcrelative_8(unsigned int address);
-//unsigned int  m68k_read_pcrelative_16(unsigned int address);
-//unsigned int  m68k_read_pcrelative_32(unsigned int address);
-
 /* Memory access for the disassembler */
 unsigned int m68k_read_disassembler_8  (unsigned int address);
 unsigned int m68k_read_disassembler_16 (unsigned int address);
 unsigned int m68k_read_disassembler_32 (unsigned int address);
-
-/* Write to anywhere */
-void m68k_write_memory_8(unsigned int address, unsigned int value);
-void m68k_write_memory_16(unsigned int address, unsigned int value);
-void m68k_write_memory_32(unsigned int address, unsigned int value);
 
 /*** BZHXX ***/
 /* ======================================================================== */

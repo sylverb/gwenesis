@@ -514,8 +514,14 @@ void gwenesis_vdp_dma_m68k()
 
     /* Source is : 
         68K_RAM if dma_source_high == 0x00FF : FETCH16RAM(dma_source_low << 1)
-        68K_ROM otherwise                    : FETCH16ROM((dma_source_high | dma_source_low) << 1))
+        68K_ROM otherwise                    : memory_map read16 on src_addr
     */
+
+/* Read a 16-bit word from the M68K address space for DMA purposes.
+ * Uses the memory_map table so SSF2/mirror/QuackShot base pointers are honoured
+ * without any conditional branches. */
+#define DMA_READ16(addr) \
+    *(uint16 *)(m68k.memory_map[((addr) >> 16) & 0xFF].base + ((addr) & 0xFFFF))
 
     /* Source is 68K RAM */
     if ( src_addr & 0x800000) {
@@ -586,7 +592,7 @@ void gwenesis_vdp_dma_m68k()
       case 0x1: // dest is VRAM
 
         do {
-          value = FETCH16ROM(src_addr);
+          value = DMA_READ16(src_addr);
           push_fifo(value);
           gwenesis_vdp_vram_write((address_reg)&0xFFFF, value >> 8);
           gwenesis_vdp_vram_write((address_reg ^ 1) & 0xFFFF, value & 0xFF);
@@ -598,7 +604,7 @@ void gwenesis_vdp_dma_m68k()
       case 0x3: // dest is CRAM
 
         do {
-          value = FETCH16ROM(src_addr);
+          value = DMA_READ16(src_addr);
           push_fifo(value);
           CRAM[(address_reg & 0x7f) >> 1] = value;
 
@@ -630,7 +636,7 @@ void gwenesis_vdp_dma_m68k()
       case 0x5: // dest is VSRAM
 
         do {
-          value = FETCH16ROM(src_addr);
+          value = DMA_READ16(src_addr);
           push_fifo(value);
           VSRAM[(address_reg & 0x7f) >> 1] = value & 0x03FF;
           address_reg += REG15_DMA_INCREMENT;

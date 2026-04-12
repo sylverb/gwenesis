@@ -22,6 +22,7 @@ __license__ = "GPLv3"
 
 void z80_write_ctrl(unsigned int address, unsigned int value);
 unsigned int z80_read_ctrl(unsigned int address);
+void z80_bank_register_write(unsigned int value); /* write one bit to the Z80 bank shift register */
 void z80_start();
 void z80_pulse_reset();
 void z80_execute(unsigned int target);
