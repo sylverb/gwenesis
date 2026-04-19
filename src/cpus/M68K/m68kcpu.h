@@ -531,13 +531,12 @@ void gwenesis_m68k_load_state(FILE *file, int ss_version);
 /* ----------------------------- Read / Write ----------------------------- */
 
 /* Read data immediately following the PC */
-#define m68k_read_immediate_16(address) (*(m68k.memory_map[((address) >> 16) & 0xff].read16))((address) & 0xffffffu)
-//#define m68k_read_immediate_16(address) *(uint16 *)(m68ki_cpu.memory_map[((address)>>16)&0xff].base + ((address) & 0xffff))
+#define m68k_read_immediate_16(address) *(uint16 *)(m68ki_cpu.memory_map[((address)>>16)&0xff].base + ((address) & 0xffff))
 #define m68k_read_immediate_32(address) (m68k_read_immediate_16(address) << 16) | (m68k_read_immediate_16(address+2))
 
 /* Read data relative to the PC */
-#define m68k_read_pcrelative_8(address) (*(m68k.memory_map[((address) >> 16) & 0xff].read8))((address) & 0xffffffu)
-//#define m68k_read_pcrelative_8(address)  READ_BYTE(m68ki_cpu.memory_map[((address)>>16)&0xff].base, (address) & 0xffff)
+#define m68k_read_pcrelative_8(address)  READ_BYTE(m68ki_cpu.memory_map[((address)>>16)&0xff].base, (address) & 0xffff)
+
 #define m68k_read_pcrelative_16(address) m68k_read_immediate_16(address)
 #define m68k_read_pcrelative_32(address) m68k_read_immediate_32(address)
 
