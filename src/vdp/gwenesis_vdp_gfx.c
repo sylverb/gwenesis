@@ -18,6 +18,7 @@ __license__ = "GPLv3"
 */
 
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 #include <stdbool.h>
 #include "m68k.h"
@@ -33,19 +34,9 @@ __license__ = "GPLv3"
 #endif
 
 #ifdef TARGET_GNW
-
-typedef unsigned char uint8_t;
-typedef unsigned short uint16_t;
-typedef unsigned int uint32_t;
-extern unsigned char* VRAM;
-
+extern unsigned char *VRAM;
 #else
-
-typedef unsigned char uint8_t;
-typedef unsigned short uint16_t;
-typedef unsigned int uint32_t;
 extern unsigned char VRAM[];
-
 #endif
 
 extern unsigned short CRAM[];            // CRAM - Palettes
