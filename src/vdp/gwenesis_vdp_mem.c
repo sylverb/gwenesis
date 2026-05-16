@@ -98,6 +98,9 @@ static int hvcounter_latched = 0;
 
 int hint_pending;
 
+extern int system_clock;
+extern unsigned int lines_per_frame;
+extern unsigned int screen_height;
 
 // Define VIDEO MODE
 extern int mode_pal;
@@ -211,8 +214,17 @@ int gwenesis_vdp_hcounter()
 //static inline __attribute__((always_inline))
 int gwenesis_vdp_vcounter()
 {
-
-    int vc = scan_line;
+    /* Cycle-accurate VC:
+     * Dividing the running 68k cycle counter by VDP_CYCLES_PER_LINE gives the
+     * physical scanline that advances *during* m68k_run(), not only between
+     * slots.  This lets raster-wait loops (poll V=0, then poll H) work
+     * correctly across many m68k_run() slices without subdividing the CPU run.
+     *
+     * At frame start m68k.cycles was reset to its small overshoot value
+     * (m68k.cycles -= system_clock_total), so the division always reflects the
+     * correct intra-frame line. */
+    int phy_line = (m68k_cycles_master() / (int)VDP_CYCLES_PER_LINE) % (int)lines_per_frame;
+    int vc = phy_line;
     int VERSION_PAL = gwenesis_vdp_status & 1;
 
     /*
@@ -225,11 +237,11 @@ int gwenesis_vdp_vcounter()
     assert(vc < 0x200);
     */
     if (VERSION_PAL && mode_pal && (vc >= 267))
-        vc = scan_line - 58; 
+        vc = phy_line - 58;
     else if (VERSION_PAL && (mode_pal==0) && (vc >= 259))
-        vc = scan_line  - 42;
+        vc = phy_line - 42;
     else if ((VERSION_PAL == 0 ) && (vc >= 235))
-        vc = scan_line -6;
+        vc = phy_line - 6;
     assert(vc < 0x200);
 
    // printf("VERSION_PAL:%d , mode_pal:%d,line:%d,vc:%d\n",VERSION_PAL,mode_pal,scan_line,vc);
@@ -790,10 +802,57 @@ void gwenesis_vdp_control_port_write(unsigned int value)
       // gwenesis_vdp_status |= 0x2;
       switch (REG23_DMA_TYPE) {
       case 0:
-      case 1:
+      case 1: {
+        int dma_len = REG19_DMA_LENGTH;
+        if (dma_len == 0) dma_len = 0x10000;
 
         gwenesis_vdp_dma_m68k();
+
+        /* Bus stall: M68K is halted during DMA.
+         *
+         * Three cases:
+         *  - Display OFF (any line): all VDP slots free → fast rate (~167/line).
+         *    Needed so that display-toggle raster effects (e.g. Formula One) let
+         *    the CPU re-enable display at the right scan line.
+         *  - Active display + display ON: only ~16 slots/line available → slow
+         *    rate.  Needed to correctly time per-line scroll DMA (e.g. European
+         *    Club Soccer).
+         *  - VBlank + display ON: no stall.  Hardware-accurate but games are
+         *    already designed around this and adding a stall here costs VBlank
+         *    CPU time unnecessarily, causing slowdowns in games like Earthion.
+         */
+        {
+          unsigned int stall = 0;
+          if (!REG1_DISP_ENABLED) {
+            /* Display off – fast stall (~167 VRAM slots/line, all slots free). */
+            stall = (unsigned int)dma_len * (unsigned int)(VDP_CYCLES_PER_LINE / 167);
+          } else if (scan_line < (int)screen_height) {
+            /* Active display + display ON: ~16 VRAM slots/line.
+             * A large DMA may overflow past the end of active display and
+             * continue into VBlank (167 slots/line there).  Compute the stall
+             * piecewise so that the carry-over into the next frame stays small
+             * (otherwise the inter-frame normalization "m68k.cycles -= system_clock"
+             * leaves the CPU stalled for the first N lines of the next frame,
+             * which breaks HINT-based raster effects in games like Landstalker). */
+            int active_lines_left = (int)screen_height - scan_line;
+            int words_in_active   = active_lines_left * 16;
+            if (dma_len <= words_in_active) {
+              /* Entire DMA fits within remaining active display. */
+              stall = (unsigned int)dma_len * (unsigned int)(VDP_CYCLES_PER_LINE / 16);
+            } else {
+              /* DMA spills into VBlank: active portion consumes all remaining
+               * active-display lines, remainder goes at the fast VBlank rate. */
+              unsigned int active_stall  = (unsigned int)active_lines_left * VDP_CYCLES_PER_LINE;
+              unsigned int vblank_words  = (unsigned int)(dma_len - words_in_active);
+              unsigned int vblank_stall  = vblank_words * (unsigned int)(VDP_CYCLES_PER_LINE / 167);
+              stall = active_stall + vblank_stall;
+            }
+          }
+          /* VBlank + display ON: stall = 0 (no stall). */
+          m68k.cycles += stall;
+        }
         break;
+      }
 
       case 2:
 
@@ -979,7 +1038,6 @@ void gwenesis_vdp_write_memory_8(unsigned int address, unsigned int value)
  *
  ******************************************************************************/
  //static inline
- extern int system_clock;
 void gwenesis_vdp_write_memory_16(unsigned int address, unsigned int value) {
   address = address & 0x1F;
 
