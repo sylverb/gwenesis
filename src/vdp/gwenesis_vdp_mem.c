@@ -688,7 +688,7 @@ void gwenesis_vdp_dma_copy()
     do
     {
         unsigned short value = VRAM[src_addr_low ^ 1];
-        gwenesis_vdp_vram_write(address_reg & 0xFFFF, value);
+        gwenesis_vdp_vram_write(address_reg ^ 1, value);
 
         address_reg += REG15_DMA_INCREMENT;
         src_addr_low++;
