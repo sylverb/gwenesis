@@ -86,7 +86,6 @@ void load_cartridge(unsigned char *buffer, size_t size);
 
 void power_on();
 void reset_emulation();
-void set_region();
 
 /* SRAM */
 extern unsigned char *GWENESIS_SRAM;

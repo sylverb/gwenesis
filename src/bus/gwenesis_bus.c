@@ -104,6 +104,222 @@ int tmss_count = 0;
  * Only used during load_cartridge / set_region before memory_map is built. */
 #define ROM_HEADER_BYTE(i) (ROM_DATA[(i) ^ 1u])
 
+/* ROM metadata for SRAM autodetect (Genesis Plus GX core/cart_hw/sram.c). */
+typedef struct {
+  unsigned int rom_size;
+  unsigned short checksum;
+  unsigned short realchecksum;
+  char product[16];
+  char international[50];
+  char region[3];
+} gwenesis_rom_info_t;
+
+static void set_region(gwenesis_rom_info_t *info);
+
+static unsigned short gwenesis_rom_realchecksum(unsigned int rom_size)
+{
+  unsigned int sum = 0;
+  unsigned int i;
+
+  if (rom_size < 0x202u)
+    return 0;
+
+  for (i = 0x200; i + 1u < rom_size; i += 2)
+    sum += ((unsigned int)ROM_HEADER_BYTE(i) << 8) | ROM_HEADER_BYTE(i + 1);
+
+  return (unsigned short)sum;
+}
+
+static void gwenesis_rom_load_info(gwenesis_rom_info_t *info, unsigned int rom_size)
+{
+  int i, j;
+
+  memset(info, 0, sizeof(*info));
+  info->rom_size = rom_size;
+  info->checksum = (unsigned short)(((unsigned int)ROM_HEADER_BYTE(0x18E) << 8) |
+                                    ROM_HEADER_BYTE(0x18F));
+  info->realchecksum = gwenesis_rom_realchecksum(rom_size);
+
+  for (i = 0; i < 14; i++)
+    info->product[i] = (char)ROM_HEADER_BYTE(0x180 + i);
+  info->product[14] = '\0';
+
+  info->international[0] = (char)ROM_HEADER_BYTE(0x150);
+  j = 1;
+  for (i = 1; i < 48 && (0x150 + i) < 0x180; i++) {
+    char c = (char)ROM_HEADER_BYTE(0x150 + i);
+
+    if (info->international[j - 1] != ' ' || c != ' ')
+      info->international[j++] = c;
+  }
+  info->international[j] = '\0';
+  info->region[0] = (char)ROM_HEADER_BYTE(0x1F0);
+  info->region[1] = (char)ROM_HEADER_BYTE(0x1F1);
+  info->region[2] = (char)ROM_HEADER_BYTE(0x1F2);
+
+  printf("Name: %s\n", info->international);
+  printf("Product: %s\n", info->product);
+  printf("Rom size: %u\n", info->rom_size);
+  printf("Region: %c%c%c\n", info->region[0], info->region[1], info->region[2]);
+  printf("Checksum: %04X / Real: %04X\n", info->checksum, info->realchecksum);
+}
+
+static void gwenesis_sram_set_range(unsigned int start, unsigned int end, int odd_only)
+{
+  gwenesis_sram_start = start;
+  gwenesis_sram_end = end;
+  gwenesis_sram_odd_only = odd_only ? 1 : 0;
+}
+
+static unsigned int gwenesis_sram_effective_size(void)
+{
+  unsigned int addr_range = gwenesis_sram_end - gwenesis_sram_start + 1;
+  unsigned int sram_size = gwenesis_sram_odd_only ? (addr_range / 2) : addr_range;
+
+  if (sram_size > MAX_SRAM_SIZE)
+    sram_size = MAX_SRAM_SIZE;
+  return sram_size;
+}
+
+static void gwenesis_sram_enable_backup(int init_ff)
+{
+  gwenesis_sram_enabled = 1;
+  gwenesis_sram_active = 1;
+  if (init_ff)
+    memset(GWENESIS_SRAM, 0xFF, MAX_SRAM_SIZE);
+}
+
+/* Wrong "RA" header fixes (SRAM only — flash saves not emulated). */
+static void gwenesis_sram_fix_ra_header(gwenesis_rom_info_t *info)
+{
+  if (strstr(info->product, "T-26013") != NULL) {
+    /* Psy-O-Blade */
+    gwenesis_sram_set_range(0x200001, 0x203FFF, 1);
+    return;
+  }
+
+  if (gwenesis_sram_start == 0xFF0000) {
+    /* Feng Kuang Tao Hua Yuan — internal RAM, not cart SRAM */
+    gwenesis_sram_enabled = 0;
+    gwenesis_sram_active = 0;
+    return;
+  }
+
+  if (gwenesis_sram_start >= 0x800000) {
+    gwenesis_sram_set_range(0x200000, 0x20FFFF, 0);
+    return;
+  }
+
+  if (gwenesis_sram_start > gwenesis_sram_end ||
+      (gwenesis_sram_end - gwenesis_sram_start) >= 0x10000u) {
+    gwenesis_sram_end = gwenesis_sram_start + 0xFFFF;
+  }
+}
+
+/* Missing "RA" header: 1=SRAM on, 0=no match, -1=force disable. */
+static int gwenesis_sram_autodetect_no_header(const gwenesis_rom_info_t *info)
+{
+  if (strstr(info->product, "T-50086") != NULL) {
+    /* PGA Tour Golf */
+    gwenesis_sram_set_range(0x200001, 0x203FFF, 1);
+    return 1;
+  }
+  if (strstr(info->product, "ACLD007") != NULL) {
+    /* Winter Challenge */
+    gwenesis_sram_set_range(0x200001, 0x200FFF, 1);
+    return 1;
+  }
+  if (strstr(info->product, "T-50286") != NULL) {
+    /* Buck Rogers - Countdown to Doomsday */
+    gwenesis_sram_set_range(0x200001, 0x203FFF, 1);
+    return 1;
+  }
+  if (((info->realchecksum == 0xAEAA) || (info->realchecksum == 0x8DBA)) &&
+      info->checksum == 0x8104) {
+    /* Xin Qigai Wangzi */
+    gwenesis_sram_set_range(0x400001, 0x40FFFF, 1);
+    return 1;
+  }
+  if (info->checksum == 0x0000 && info->realchecksum == 0x1F7F &&
+      info->rom_size > 0x80000u + 0x1B2u &&
+      ROM_HEADER_BYTE(0x80000 + 0x1B0) == 0x52 &&
+      ROM_HEADER_BYTE(0x80000 + 0x1B1) == 0x41) {
+    /* Radica - Sensible Soccer Plus */
+    gwenesis_sram_set_range(0x200001, 0x203FFF, 1);
+    return 1;
+  }
+  if (strstr(info->international, "SONIC & KNUCKLES") != NULL) {
+    if (info->rom_size == 0x400000u) {
+      /* Sonic 3 & Knuckles combined — FRAM from S3 cart */
+      gwenesis_sram_set_range(0x200001, 0x203FFF, 1);
+      return 1;
+    }
+  }
+
+  if (strstr(info->product, "T-113016") != NULL) {
+    /* Pugsy — no SRAM (copy protection writes) */
+    return -1;
+  }
+  if (strstr(info->international, "SONIC THE HEDGEHOG 2") != NULL) {
+    /* S&K lock-on: do not map SRAM over mirrored ROM */
+    return -1;
+  }
+
+  if (info->rom_size <= 0x200000u) {
+    /* GPGX default for small ROMs without header */
+    gwenesis_sram_set_range(0x200000, 0x20FFFF, 0);
+    return 1;
+  }
+
+  return 0;
+}
+
+static void gwenesis_sram_detect_from_rom(gwenesis_rom_info_t *info)
+{
+  if (ROM_HEADER_BYTE(0x1B0) == 0x52 && ROM_HEADER_BYTE(0x1B1) == 0x41) {
+    unsigned char sram_type = ROM_HEADER_BYTE(0x1B2);
+
+    gwenesis_sram_odd_only = (sram_type & 0x08) ? 1 : 0;
+    gwenesis_sram_start = ((unsigned int)ROM_HEADER_BYTE(0x1B4) << 24) |
+                          ((unsigned int)ROM_HEADER_BYTE(0x1B5) << 16) |
+                          ((unsigned int)ROM_HEADER_BYTE(0x1B6) <<  8) |
+                           (unsigned int)ROM_HEADER_BYTE(0x1B7);
+    gwenesis_sram_end   = ((unsigned int)ROM_HEADER_BYTE(0x1B8) << 24) |
+                          ((unsigned int)ROM_HEADER_BYTE(0x1B9) << 16) |
+                          ((unsigned int)ROM_HEADER_BYTE(0x1BA) <<  8) |
+                           (unsigned int)ROM_HEADER_BYTE(0x1BB);
+    gwenesis_sram_start &= ~1u;
+
+    gwenesis_sram_enable_backup(0);
+    gwenesis_sram_fix_ra_header(info);
+
+    if (gwenesis_sram_enabled) {
+      printf("SRAM detected: start=0x%06X end=0x%06X size=%u bytes mode=%s\n",
+             gwenesis_sram_start, gwenesis_sram_end, gwenesis_sram_effective_size(),
+             gwenesis_sram_odd_only ? "odd-only" : "full");
+    } else {
+      printf("SRAM disabled (header fix)\n");
+    }
+  } else if (ROM_HEADER_BYTE(0x1B0) == 0x46 && ROM_HEADER_BYTE(0x1B1) == 0x4C) {
+  /* "FL" — SGDK flash save (not emulated) */
+    printf("SRAM FL/flash header not emulated\n");
+  } else {
+    int autodetect = gwenesis_sram_autodetect_no_header(info);
+
+    if (autodetect == 1) {
+      gwenesis_sram_enable_backup(1);
+      printf("SRAM autodetect (%s): start=0x%06X end=0x%06X size=%u bytes mode=%s\n",
+             info->product, gwenesis_sram_start, gwenesis_sram_end,
+             gwenesis_sram_effective_size(),
+             gwenesis_sram_odd_only ? "odd-only" : "full");
+    } else if (autodetect == -1) {
+      printf("SRAM disabled (%s)\n", info->product[0] ? info->product : info->international);
+    } else {
+      printf("No SRAM detected in ROM header\n");
+    }
+  }
+}
+
 /******************************************************************************
  *
  *   Load a Sega Genesis Cartridge into CPU Memory
@@ -115,6 +331,8 @@ int tmss_count = 0;
 
 void load_cartridge()
 {
+    gwenesis_rom_info_t info;
+
     // Clear all volatile memory
     M68K_RAM = itc_malloc(MAX_RAM_SIZE); // M68K RAM 
     memset(M68K_RAM, 0, MAX_RAM_SIZE);
@@ -125,21 +343,18 @@ void load_cartridge()
 
     z80_pulse_reset();
 
-    set_region();
+    gwenesis_rom_load_info(&info, ROM_DATA_LENGTH);
+    set_region(&info);
 
     /* QuackShot Rev A (00004054-01, checksum A4B3) needs custom ROM wiring. */
     gwenesis_quackshot_map = 0;
     if (ROM_DATA_LENGTH == 0x80000) {
-        char product[15];
-        for (int i = 0; i < 14; i++) product[i] = (char)ROM_HEADER_BYTE(0x180 + i);
-        product[14] = '\0';
-        unsigned int checksum = ((unsigned int)ROM_HEADER_BYTE(0x18E) << 8) | (unsigned int)ROM_HEADER_BYTE(0x18F);
-        if (strstr(product, "00004054-01") && checksum == 0xA4B3) {
+        if (strstr(info.product, "00004054-01") && info.checksum == 0xA4B3) {
             gwenesis_quackshot_map = 1;
             printf("QuackShot Rev A custom ROM mapping enabled\n");
         } else {
             printf("QuackShot map check: product='%s' checksum=%04X (no match)\n",
-                   product, checksum);
+                   info.product, info.checksum);
         }
     }
     /* ------ SRAM detection from ROM header ------ */
@@ -156,46 +371,7 @@ void load_cartridge()
     gwenesis_sram_active   = 0;
     gwenesis_sram_write_protect = 0;
     GWENESIS_SRAM = ahb_malloc(MAX_SRAM_SIZE);
-    memset(GWENESIS_SRAM, 0x00, MAX_SRAM_SIZE);
-
-    unsigned char flag_hi  = ROM_HEADER_BYTE(0x1B0);
-    unsigned char flag_lo  = ROM_HEADER_BYTE(0x1B1);
-    unsigned char sram_type = ROM_HEADER_BYTE(0x1B2);
-
-    if (flag_hi == 0x52 && flag_lo == 0x41) { /* "RA" */
-
-        /* Odd-only (byte-wide SRAM on D0-D7): type byte has bit 3 set, e.g. 0xF9 */
-        gwenesis_sram_odd_only = (sram_type & 0x08) ? 1 : 0;
-
-        gwenesis_sram_start = ((unsigned int)ROM_HEADER_BYTE(0x1B4) << 24) |
-                     ((unsigned int)ROM_HEADER_BYTE(0x1B5) << 16) |
-                     ((unsigned int)ROM_HEADER_BYTE(0x1B6) <<  8) |
-                      (unsigned int)ROM_HEADER_BYTE(0x1B7);
-        gwenesis_sram_end   = ((unsigned int)ROM_HEADER_BYTE(0x1B8) << 24) |
-                     ((unsigned int)ROM_HEADER_BYTE(0x1B9) << 16) |
-                     ((unsigned int)ROM_HEADER_BYTE(0x1BA) <<  8) |
-                      (unsigned int)ROM_HEADER_BYTE(0x1BB);
-
-        /* Force start to even boundary so address math is consistent */
-        gwenesis_sram_start &= ~1u;
-
-        /* Actual number of bytes in our SRAM[] array:
-         * odd-only -> only odd addresses carry data, so effective entries = range/2 */
-        unsigned int addr_range = gwenesis_sram_end - gwenesis_sram_start + 1;
-        unsigned int sram_size  = gwenesis_sram_odd_only ? (addr_range / 2) : addr_range;
-        if (sram_size > MAX_SRAM_SIZE) sram_size = MAX_SRAM_SIZE;
-
-        gwenesis_sram_enabled = 1;
-        /* SRAM is active by default — old games (pre-1993, e.g. Landstalker)
-         * never write to 0xA130F1; they expect SRAM to be always mapped.
-         * Games that use the register will explicitly set/clear gwenesis_sram_active. */
-        gwenesis_sram_active  = 1;
-        printf("SRAM detected: start=0x%06X end=0x%06X size=%d bytes mode=%s\n",
-               gwenesis_sram_start, gwenesis_sram_end, sram_size,
-               gwenesis_sram_odd_only ? "odd-only" : "full");
-    } else {
-        printf("No SRAM detected in ROM header\n");
-    }
+    gwenesis_sram_detect_from_rom(&info);
 
     /* ------ SSF2 mapper detection ------ */
     /*
@@ -218,6 +394,8 @@ void load_cartridge()
 
 void load_cartridge(unsigned char *buffer, size_t size)
 {
+    gwenesis_rom_info_t info;
+
     // Clear all volatile memory
     memset(M68K_RAM, 0, MAX_RAM_SIZE);
     memset(ZRAM, 0, MAX_Z80_RAM_SIZE);
@@ -226,6 +404,9 @@ void load_cartridge(unsigned char *buffer, size_t size)
     // Set Z80 Memory as ZRAM
     z80_set_memory(ZRAM);
     z80_pulse_reset();
+
+    gwenesis_rom_load_info(&info, size);
+    set_region(&info);
 
     // Copy file contents to CPU ROM memory
     if (size > MAX_ROM_SIZE) {
@@ -246,21 +427,15 @@ void load_cartridge(unsigned char *buffer, size_t size)
     #endif
 
 
-    set_region();
-
     /* QuackShot Rev A (00004054-01, checksum A4B3) needs custom ROM wiring. */
     gwenesis_quackshot_map = 0;
-    if (size == 0x80000) {
-      char product[15];
-      for (int i = 0; i < 14; i++) product[i] = (char)ROM_DATA[0x180 + i];
-      product[14] = '\0';
-      unsigned int checksum = ((unsigned int)ROM_DATA[0x18E] << 8) | (unsigned int)ROM_DATA[0x18F];
-      if (strstr(product, "00004054-01") && checksum == 0xA4B3) {
+    if (ROM_DATA_LENGTH == 0x80000) {
+      if (strstr(info.product, "00004054-01") && info.checksum == 0xA4B3) {
         gwenesis_quackshot_map = 1;
         printf("QuackShot Rev A custom ROM mapping enabled\n");
       } else {
         printf("QuackShot map check: product='%s' checksum=%04X (no match)\n",
-               product, checksum);
+               info.product, info.checksum);
       }
     }
     /* ------ SRAM detection from ROM header ------ */
@@ -268,38 +443,8 @@ void load_cartridge(unsigned char *buffer, size_t size)
     gwenesis_sram_odd_only = 0;
     gwenesis_sram_active   = 0;
     gwenesis_sram_write_protect = 0;
-    memset(GWENESIS_SRAM, 0x00, MAX_SRAM_SIZE);
-
-    if (ROM_DATA[0x1B0] == 0x52 && ROM_DATA[0x1B1] == 0x41) { /* "RA" */
-        unsigned char sram_type = ROM_DATA[0x1B2];
-        gwenesis_sram_odd_only = (sram_type & 0x08) ? 1 : 0;
-
-        gwenesis_sram_start = ((unsigned int)ROM_DATA[0x1B4] << 24) |
-                     ((unsigned int)ROM_DATA[0x1B5] << 16) |
-                     ((unsigned int)ROM_DATA[0x1B6] <<  8) |
-                      (unsigned int)ROM_DATA[0x1B7];
-        gwenesis_sram_end   = ((unsigned int)ROM_DATA[0x1B8] << 24) |
-                     ((unsigned int)ROM_DATA[0x1B9] << 16) |
-                     ((unsigned int)ROM_DATA[0x1BA] <<  8) |
-                      (unsigned int)ROM_DATA[0x1BB];
-
-        gwenesis_sram_start &= ~1u;  /* force even boundary */
-
-        unsigned int addr_range = gwenesis_sram_end - gwenesis_sram_start + 1;
-        unsigned int sram_size  = gwenesis_sram_odd_only ? (addr_range / 2) : addr_range;
-        if (sram_size > MAX_SRAM_SIZE) sram_size = MAX_SRAM_SIZE;
-
-        gwenesis_sram_enabled = 1;
-        /* SRAM is active by default — old games (pre-1993, e.g. Landstalker)
-         * never write to 0xA130F1; they expect SRAM to be always mapped.
-         * Games that use the register will explicitly set/clear gwenesis_sram_active. */
-        gwenesis_sram_active  = 1;
-        printf("SRAM detected: start=0x%06X end=0x%06X size=%d bytes mode=%s\n",
-               gwenesis_sram_start, gwenesis_sram_end, sram_size,
-               gwenesis_sram_odd_only ? "odd-only" : "full");
-    } else {
-        printf("No SRAM detected in ROM header\n");
-    }
+    GWENESIS_SRAM = ahb_malloc(MAX_SRAM_SIZE);
+    gwenesis_sram_detect_from_rom(&info);
 
     /* ------ SSF2 mapper detection ------ */
     /*
@@ -378,7 +523,7 @@ void reset_emulation() {
  *   Look at ROM to set console compatible region
  *
  ******************************************************************************/
-void set_region()
+void set_region(gwenesis_rom_info_t *info)
 {    
   /*
     old style : JUE characters
@@ -397,26 +542,14 @@ void set_region()
 
     int country = 0;
 
-    char rom_str[3];
-
-    printf("ROM game  : ");
-    for (int j=0; j < 48;j++) printf("%c",(char)ROM_HEADER_BYTE(0x150+j));
-    printf("\n");
-
-    rom_str[0]=ROM_HEADER_BYTE(0x1F0);
-    rom_str[1]=ROM_HEADER_BYTE(0x1F1);
-    rom_str[2]=ROM_HEADER_BYTE(0x1F2);
-
-    printf("ROM region:%c%c%c (0x%02x 0x%02x 0x%02x)\n", rom_str[0],rom_str[1],rom_str[2],rom_str[0],rom_str[1],rom_str[2]);
-
     /* from Gens */
-    if (!memcmp(rom_str, "eur", 3)) country |= 8;
-    else if (!memcmp(rom_str, "EUR", 3)) country |= 8;
-    else if (!memcmp(rom_str, "Europe", 3)) country |= 8;
-    else if (!memcmp(rom_str, "jap", 3)) country |= 1;
-    else if (!memcmp(rom_str, "JAP", 3)) country |= 1;
-    else if (!memcmp(rom_str, "usa", 3)) country |= 4;
-    else if (!memcmp(rom_str, "USA", 3)) country |= 4;
+    if (!memcmp(info->region, "eur", 3)) country |= 8;
+    else if (!memcmp(info->region, "EUR", 3)) country |= 8;
+    else if (!memcmp(info->region, "Europe", 3)) country |= 8;
+    else if (!memcmp(info->region, "jap", 3)) country |= 1;
+    else if (!memcmp(info->region, "JAP", 3)) country |= 1;
+    else if (!memcmp(info->region, "usa", 3)) country |= 4;
+    else if (!memcmp(info->region, "USA", 3)) country |= 4;
     else
     {
       int i;
@@ -425,7 +558,7 @@ void set_region()
       /* look for each characters */
       for(i = 0; i < 3; i++)
       {
-        c = rom_str[i];
+        c = info->region[i];
 
         if (c == 'U') country |= 4;
         else if (c == 'E' || c == 'e' ) country |= 8;
