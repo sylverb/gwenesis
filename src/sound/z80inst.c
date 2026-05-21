@@ -145,7 +145,7 @@ void z80_write_ctrl(unsigned int address, unsigned int value) {
     z80_log(__FUNCTION__,"BUSREQ = %d, current=%d", value,bus_ack);
 
     // Bus request. Z80 bus on hold.
-    if (value) {
+    if (value & 1) {
       bus_ack = 1;
 
 
@@ -158,7 +158,7 @@ void z80_write_ctrl(unsigned int address, unsigned int value) {
   {
     z80_log(__FUNCTION__,"RESET = %d, current=%d", value,reset);
 
-    if (value == 0) {
+    if (!(value & 1)) {
       reset = 1;
     } else {
       /* Real hardware: reset pulse occurs on 0->1 transition only. */
