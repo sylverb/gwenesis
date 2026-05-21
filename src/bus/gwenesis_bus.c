@@ -39,6 +39,14 @@ __license__ = "GPLv3"
   #pragma GCC optimize("Ofast")
 #endif
 
+/* Defined in gwenesis_vdp_gfx.c — mirrors VDP REG1_PAL, set by set_region() */
+extern int mode_pal;
+extern unsigned short gwenesis_vdp_status;
+
+/* Region last applied by set_region() or gwenesis_apply_region_override().
+ * 0 = USA (NTSC overseas), 1 = Europe (PAL), 2 = Japan (NTSC domestic). */
+int gwenesis_detected_region = 0;
+
 #define BUS_DISABLE_LOGGING 1
 
 #if !BUS_DISABLE_LOGGING
@@ -485,17 +493,12 @@ void power_on() {
   YM2612Init();
   YM2612Config(YM2612_DISCRETE);
   // Initialize PSG SN76489 chip
-  //CLOCK_NTSC      = 3579545,
-  //CLOCK_PAL       = 3546895,
- // CLOCK_NTSC_SMS1 = 3579527
-
-//  if (mode_pal) {
-//     gwenesis_SN76489_Init(3546895, GWENESIS_AUDIO_BUFFER_LENGTH_PAL*50,AUDIO_FREQ_DIVISOR);
-//   } else{
-//     gwenesis_SN76489_Init(3579545, GWENESIS_AUDIO_BUFFER_LENGTH_NTSC*60,AUDIO_FREQ_DIVISOR);
-//   }
-  
-  gwenesis_SN76489_Init(3579545, 888*60,AUDIO_FREQ_DIVISOR);
+  // CLOCK_NTSC = 3579545, CLOCK_PAL = 3546895
+  if (mode_pal) {
+    gwenesis_SN76489_Init(3546895, GWENESIS_AUDIO_BUFFER_LENGTH_PAL * 50, AUDIO_FREQ_DIVISOR);
+  } else {
+    gwenesis_SN76489_Init(3579545, GWENESIS_AUDIO_BUFFER_LENGTH_NTSC * 60, AUDIO_FREQ_DIVISOR);
+  }
 
 }
 
@@ -538,9 +541,7 @@ void set_region(gwenesis_rom_info_t *info)
     bit 3:  +4 Oversea  50Hz (Europe) 
   */
 
-   // extern int mode_pal;
-
-    int country = 0;
+  int country = 0;
 
     /* from Gens */
     if (!memcmp(info->region, "eur", 3)) country |= 8;
@@ -583,31 +584,63 @@ void set_region(gwenesis_rom_info_t *info)
     if (country & 4){
       printf("Oversea-NTSC USA 60Hz\n");
       gwenesis_io_set_reg(0, 0x81);
-   //   gwenesis_vdp_status &= 0xFFFE;
-     // mode_pal = 0;
+      gwenesis_vdp_status &= 0xFFFE;
+      mode_pal = 0;
+      gwenesis_detected_region = 0;
       return;
     }
     /* EUROPE 50Hz */
     if (country & 8){
       printf("Oversea-PAL Europe 50Hz\n");
       gwenesis_io_set_reg(0, 0xC1);
-    //  gwenesis_vdp_status |= 0x1;
-      //mode_pal = 1;
+      gwenesis_vdp_status |= 0x1;
+      mode_pal = 1;
+      gwenesis_detected_region = 1;
       return;
     }
     /* set Asia 60HZ */
     if (country & 1){
       printf("Domestic-NTSC Asia 60Hz\n");
       gwenesis_io_set_reg(0, 0x1);
-    //  gwenesis_vdp_status &= 0xFFFE;
-      //mode_pal = 0;
+      gwenesis_vdp_status &= 0xFFFE;
+      mode_pal = 0;
+      gwenesis_detected_region = 2;
       return;
     }
-      printf("Oversea-NTSC USA 60Hz no detection>> default mode\n");
-      gwenesis_io_set_reg(0, 0x81);
-     // gwenesis_vdp_status &= 0xFFFE;
-     // mode_pal = 0;
+    printf("Oversea-NTSC USA 60Hz no detection>> default mode\n");
+    gwenesis_io_set_reg(0, 0x81);
+    gwenesis_vdp_status &= 0xFFFE;
+    mode_pal = 0;
+    gwenesis_detected_region = 0;
 
+}
+
+/* Apply a region directly, bypassing ROM header detection.
+ * region_code: 0=USA (NTSC overseas), 1=Europe (PAL), 2=Japan (NTSC domestic).
+ * Call after load_cartridge() and before gwenesis_system_init() / power_on(). */
+void gwenesis_apply_region_override(int region_code)
+{
+    switch (region_code) {
+    case 1: /* Europe PAL */
+        printf("Region override: Europe PAL 50Hz\n");
+        gwenesis_io_set_reg(0, 0xC1);
+        gwenesis_vdp_status |= 0x1;
+        mode_pal = 1;
+        break;
+    case 2: /* Japan NTSC domestic */
+        printf("Region override: Japan NTSC 60Hz\n");
+        gwenesis_io_set_reg(0, 0x01);
+        gwenesis_vdp_status &= 0xFFFE;
+        mode_pal = 0;
+        break;
+    default: /* 0: USA NTSC overseas */
+        printf("Region override: USA NTSC 60Hz\n");
+        gwenesis_io_set_reg(0, 0x81);
+        gwenesis_vdp_status &= 0xFFFE;
+        mode_pal = 0;
+        break;
+    }
+    gwenesis_detected_region = region_code;
 }
 
 /* Forward declarations for 0xA1xxxx dispatcher handlers */

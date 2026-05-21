@@ -33,7 +33,7 @@ __license__ = "GPLv3"
 #define GWENESIS_SAVESTATE_HEADER_PREFIX_LEN 4
 
 /** Value encoded in the last 4 digits of the header (e.g. 1 → `Gene0001`). */
-#define GWENESIS_SAVESTATE_CURRENT_VERSION 1
+#define GWENESIS_SAVESTATE_CURRENT_VERSION 2
 
 /** Parse layout version from the first `GWENESIS_SAVESTATE_HEADER_SIZE` bytes; 0 = unknown or `Gene0000`. */
 int gwenesis_savestate_version_from_header(const unsigned char header[GWENESIS_SAVESTATE_HEADER_SIZE]);

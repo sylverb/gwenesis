@@ -919,7 +919,6 @@ void draw_sprites(int line)
 void gwenesis_vdp_render_config()
 {
     mode_h40 = REG12_MODE_H40;
-    mode_pal = REG1_PAL;
 
     int ntwidth = BITS(gwenesis_vdp_regs[16], 0, 2);
     int ntheight = BITS(gwenesis_vdp_regs[16], 4, 2);

@@ -59,6 +59,10 @@ __license__ = "GPLv3"
 #define GWENESIS_AUDIO_BUFFER_LENGTH_NTSC 888
 #define GWENESIS_AUDIO_BUFFER_LENGTH_PAL 1056
 
+/* Internal buffer allocation must fit the max samples the PSG/YM can generate
+ * in one frame.  PAL: ceil(313 * 3420 / 1008) = 1062.  Add a small margin. */
+#define GWENESIS_AUDIO_BUFFER_CAPACITY ((LINES_PER_FRAME_PAL * VDP_CYCLES_PER_LINE / AUDIO_FREQ_DIVISOR) + 16)
+
 /* 1 = printf each SSF2 bank write + OOB check vs ROM size (add -D to CFLAGS) */
 #ifndef GWENESIS_DEBUG_SSF2_MAPPER
 #define GWENESIS_DEBUG_SSF2_MAPPER 1
@@ -124,5 +128,15 @@ void gwenesis_bus_sram_update_memory_map(void);
 
 void gwenesis_bus_save_state(FILE *file);
 void gwenesis_bus_load_state(FILE *file, int ss_version);
+
+/* Region detected from the ROM header (updated by set_region and
+ * gwenesis_apply_region_override).
+ * 0 = USA (NTSC overseas), 1 = Europe (PAL), 2 = Japan (NTSC domestic). */
+extern int gwenesis_detected_region;
+
+/* Override the hardware region, bypassing ROM header detection.
+ * region_code: 0=USA (NTSC overseas), 1=Europe (PAL), 2=Japan (NTSC domestic).
+ * Call after load_cartridge() and before gwenesis_system_init() / power_on(). */
+void gwenesis_apply_region_override(int region_code);
 
 #endif
