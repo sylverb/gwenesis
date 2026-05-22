@@ -649,10 +649,13 @@ void draw_line_aw(int line) {
   const unsigned int column_scrolling = gwenesis_vdp_regs[11] & 0x4;
 
   // Invert horizontal scrolling (because it goes right, but we need to offset
-  // of the first screen pixel)
+  // of the first screen pixel).
+  // When the Window plane occupies the left side (PlanA_first > 0), adjust the
+  // starting column to match screen position PlanA_first, not position 0.
   scrollx = -scrollx;
-  uint8_t col = (scrollx >> 3) & ntw_mask;
-  uint8_t patx = scrollx & 7;
+  uint16_t adjusted_scrollx_a = (uint16_t)(scrollx + PlanA_first);
+  uint8_t col = (adjusted_scrollx_a >> 3) & ntw_mask;
+  uint8_t patx = adjusted_scrollx_a & 7;
 
   unsigned int numcell = 0;
   pos -= patx;
