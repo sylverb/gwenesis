@@ -167,9 +167,11 @@ static void gwenesis_rom_load_info(gwenesis_rom_info_t *info, unsigned int rom_s
 
   printf("Name: %s\n", info->international);
   printf("Product: %s\n", info->product);
-  printf("Rom size: %u\n", info->rom_size);
   printf("Region: %c%c%c\n", info->region[0], info->region[1], info->region[2]);
+#if !BUS_DISABLE_LOGGING
+  printf("Rom size: %u\n", info->rom_size);
   printf("Checksum: %04X / Real: %04X\n", info->checksum, info->realchecksum);
+#endif
 }
 
 static void gwenesis_sram_set_range(unsigned int start, unsigned int end, int odd_only)
@@ -179,6 +181,7 @@ static void gwenesis_sram_set_range(unsigned int start, unsigned int end, int od
   gwenesis_sram_odd_only = odd_only ? 1 : 0;
 }
 
+#if !BUS_DISABLE_LOGGING
 static unsigned int gwenesis_sram_effective_size(void)
 {
   unsigned int addr_range = gwenesis_sram_end - gwenesis_sram_start + 1;
@@ -188,6 +191,7 @@ static unsigned int gwenesis_sram_effective_size(void)
     sram_size = MAX_SRAM_SIZE;
   return sram_size;
 }
+#endif
 
 static void gwenesis_sram_enable_backup(int init_ff)
 {
@@ -301,6 +305,7 @@ static void gwenesis_sram_detect_from_rom(gwenesis_rom_info_t *info)
     gwenesis_sram_enable_backup(0);
     gwenesis_sram_fix_ra_header(info);
 
+#if !BUS_DISABLE_LOGGING
     if (gwenesis_sram_enabled) {
       printf("SRAM detected: start=0x%06X end=0x%06X size=%u bytes mode=%s\n",
              gwenesis_sram_start, gwenesis_sram_end, gwenesis_sram_effective_size(),
@@ -308,22 +313,29 @@ static void gwenesis_sram_detect_from_rom(gwenesis_rom_info_t *info)
     } else {
       printf("SRAM disabled (header fix)\n");
     }
+#endif
   } else if (ROM_HEADER_BYTE(0x1B0) == 0x46 && ROM_HEADER_BYTE(0x1B1) == 0x4C) {
   /* "FL" — SGDK flash save (not emulated) */
+#if !BUS_DISABLE_LOGGING
     printf("SRAM FL/flash header not emulated\n");
+#endif
   } else {
     int autodetect = gwenesis_sram_autodetect_no_header(info);
 
     if (autodetect == 1) {
       gwenesis_sram_enable_backup(1);
+#if !BUS_DISABLE_LOGGING
       printf("SRAM autodetect (%s): start=0x%06X end=0x%06X size=%u bytes mode=%s\n",
              info->product, gwenesis_sram_start, gwenesis_sram_end,
              gwenesis_sram_effective_size(),
              gwenesis_sram_odd_only ? "odd-only" : "full");
+#endif
+#if !BUS_DISABLE_LOGGING
     } else if (autodetect == -1) {
       printf("SRAM disabled (%s)\n", info->product[0] ? info->product : info->international);
     } else {
       printf("No SRAM detected in ROM header\n");
+#endif
     }
   }
 }
@@ -440,10 +452,14 @@ void load_cartridge(unsigned char *buffer, size_t size)
     if (ROM_DATA_LENGTH == 0x80000) {
       if (strstr(info.product, "00004054-01") && info.checksum == 0xA4B3) {
         gwenesis_quackshot_map = 1;
+#if !BUS_DISABLE_LOGGING
         printf("QuackShot Rev A custom ROM mapping enabled\n");
+#endif
       } else {
+#if !BUS_DISABLE_LOGGING
         printf("QuackShot map check: product='%s' checksum=%04X (no match)\n",
                info.product, info.checksum);
+#endif
       }
     }
     /* ------ SRAM detection from ROM header ------ */
@@ -546,7 +562,6 @@ void set_region(gwenesis_rom_info_t *info)
     /* from Gens */
     if (!memcmp(info->region, "eur", 3)) country |= 8;
     else if (!memcmp(info->region, "EUR", 3)) country |= 8;
-    else if (!memcmp(info->region, "Europe", 3)) country |= 8;
     else if (!memcmp(info->region, "jap", 3)) country |= 1;
     else if (!memcmp(info->region, "JAP", 3)) country |= 1;
     else if (!memcmp(info->region, "usa", 3)) country |= 4;
@@ -582,7 +597,7 @@ void set_region(gwenesis_rom_info_t *info)
 
     /* USA 60Hz*/
     if (country & 4){
-      printf("Oversea-NTSC USA 60Hz\n");
+      printf("USA 60Hz\n");
       gwenesis_io_set_reg(0, 0x81);
       gwenesis_vdp_status &= 0xFFFE;
       mode_pal = 0;
@@ -591,7 +606,7 @@ void set_region(gwenesis_rom_info_t *info)
     }
     /* EUROPE 50Hz */
     if (country & 8){
-      printf("Oversea-PAL Europe 50Hz\n");
+      printf("Europe 50Hz\n");
       gwenesis_io_set_reg(0, 0xC1);
       gwenesis_vdp_status |= 0x1;
       mode_pal = 1;
@@ -600,14 +615,14 @@ void set_region(gwenesis_rom_info_t *info)
     }
     /* set Asia 60HZ */
     if (country & 1){
-      printf("Domestic-NTSC Asia 60Hz\n");
+      printf("Asia 60Hz\n");
       gwenesis_io_set_reg(0, 0x1);
       gwenesis_vdp_status &= 0xFFFE;
       mode_pal = 0;
       gwenesis_detected_region = 2;
       return;
     }
-    printf("Oversea-NTSC USA 60Hz no detection>> default mode\n");
+    printf("default USA 60Hz\n");
     gwenesis_io_set_reg(0, 0x81);
     gwenesis_vdp_status &= 0xFFFE;
     mode_pal = 0;
@@ -622,19 +637,19 @@ void gwenesis_apply_region_override(int region_code)
 {
     switch (region_code) {
     case 1: /* Europe PAL */
-        printf("Region override: Europe PAL 50Hz\n");
+        printf("Europe 50Hz\n");
         gwenesis_io_set_reg(0, 0xC1);
         gwenesis_vdp_status |= 0x1;
         mode_pal = 1;
         break;
     case 2: /* Japan NTSC domestic */
-        printf("Region override: Japan NTSC 60Hz\n");
+        printf("Asia 60Hz\n");
         gwenesis_io_set_reg(0, 0x01);
         gwenesis_vdp_status &= 0xFFFE;
         mode_pal = 0;
         break;
     default: /* 0: USA NTSC overseas */
-        printf("Region override: USA NTSC 60Hz\n");
+        printf("Asia 60Hz\n");
         gwenesis_io_set_reg(0, 0x81);
         gwenesis_vdp_status &= 0xFFFE;
         mode_pal = 0;
