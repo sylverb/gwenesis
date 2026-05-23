@@ -182,21 +182,24 @@ void gwenesis_vdp_reset() {
 //static inline __attribute__((always_inline))
 int gwenesis_vdp_hcounter()
 {
-    int mclk = m68k_cycles_run() ;
+    int elapsed = m68k_cycles_master() - system_clock;
+    if (elapsed < 0)
+        elapsed = 0;
+    elapsed %= (int)VDP_CYCLES_PER_LINE;
     int pixclk;
 
     // Accurate 9-bit hcounter emulation, from timing posted here:
     // http://gendev.spritesmind.net/forum/viewtopic.php?p=17683#17683
     if (REG12_MODE_H40)
     {
-        pixclk = mclk * 420 / VDP_CYCLES_PER_LINE;
+        pixclk = elapsed * 420 / (int)VDP_CYCLES_PER_LINE;
         pixclk += 0xD;
         if (pixclk >= 0x16D)
             pixclk += 0x1C9 - 0x16D;
     }
     else
     {
-        pixclk = mclk * 342 / VDP_CYCLES_PER_LINE;
+        pixclk = elapsed * 342 / (int)VDP_CYCLES_PER_LINE;
         pixclk += 0xB;
         if (pixclk >= 0x128)
             pixclk += 0x1D2 - 0x128;
@@ -214,28 +217,19 @@ int gwenesis_vdp_hcounter()
 //static inline __attribute__((always_inline))
 int gwenesis_vdp_vcounter()
 {
-    /* Cycle-accurate VC:
-     * Dividing the running 68k cycle counter by VDP_CYCLES_PER_LINE gives the
-     * physical scanline that advances *during* m68k_run(), not only between
-     * slots.  This lets raster-wait loops (poll V=0, then poll H) work
-     * correctly across many m68k_run() slices without subdividing the CPU run.
-     *
-     * At frame start m68k.cycles was reset to its small overshoot value
-     * (m68k.cycles -= system_clock_total), so the division always reflects the
-     * correct intra-frame line. */
-    int phy_line = (m68k_cycles_master() / (int)VDP_CYCLES_PER_LINE) % (int)lines_per_frame;
+    /* GPGX-style VC: anchored to the frame loop's scan_line, advanced by elapsed
+     * cycles since the start of this line (system_clock).  Using absolute
+     * m68k.cycles / VDP_CYCLES_PER_LINE wraps to 0 mid-vblank when DMA stalls
+     * carry cycles into the next frame
+     */
+    int elapsed = m68k_cycles_master() - system_clock;
+    if (elapsed < 0)
+        elapsed = 0;
+    int delta = elapsed / (int)VDP_CYCLES_PER_LINE;
+    int phy_line = ((int)scan_line + delta) % (int)lines_per_frame;
     int vc = phy_line;
     int VERSION_PAL = gwenesis_vdp_status & 1;
 
-    /*
-    if (VERSION_PAL && mode_pal && (vc >= 0x10B))
-        vc += 0x1D2 - 0x10B;
-    else if (VERSION_PAL && (mode_pal==0) && (vc >= 0x103))
-        vc += 0x1CA - 0x103;
-    else if ((VERSION_PAL ==0 ) && (vc >= 0xEB))
-        vc += 0x1E5 - 0xEB;
-    assert(vc < 0x200);
-    */
     if (VERSION_PAL && mode_pal && (vc >= 267))
         vc = phy_line - 58;
     else if (VERSION_PAL && (mode_pal==0) && (vc >= 259))
