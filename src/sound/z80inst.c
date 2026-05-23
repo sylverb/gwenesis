@@ -170,16 +170,35 @@ void z80_write_ctrl(unsigned int address, unsigned int value) {
   }
 }
 
+unsigned int z80_read_busack_word(void)
+{
+  z80_sync();
+
+  unsigned int pc = m68k_get_reg(M68K_REG_PC);
+  unsigned int data = m68k_read_disassembler_16(pc);
+
+  if (bus_ack == 1 && reset == 0)
+    return data & 0xFEFFu;
+  return data | 0x0100u;
+}
+
 unsigned int z80_read_ctrl(unsigned int address) {
 
   z80_sync();
 
   if (address == 0x1100) {
+    /* GPGX-style BUSACK: merge open-bus prefetch at PC with D0 status.
+     * zstate==3 in GPGX == bus requested and Z80 not in reset. */
+    unsigned int pc = m68k_get_reg(M68K_REG_PC);
+    unsigned int data = m68k_read_disassembler_8(pc);
 
-    /* BUSACK is asserted only when bus is requested and Z80 is not held in reset. */
-    unsigned int busack = (bus_ack == 1 && reset == 0) ? 0 : 1;
-    z80_log(__FUNCTION__,"RUNNING = %d ", busack);
-    return busack;
+    if (bus_ack == 1 && reset == 0)
+      data &= 0xFEu;
+    else
+      data |= 0x01u;
+
+    z80_log(__FUNCTION__, "RUNNING = %d ", data);
+    return data;
 
   } else if (address == 0x1101) {
     return 0x00;

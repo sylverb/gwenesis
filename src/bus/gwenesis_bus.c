@@ -858,6 +858,8 @@ static unsigned int mmap_z80ctrl_read8(unsigned int address)
 static unsigned int mmap_z80ctrl_read16(unsigned int address)
 {
   unsigned int a = address & 0xFFFF;
+  if (a == 0x1100)
+    return z80_read_busack_word();
   return (z80_read_ctrl(a) << 8) | z80_read_ctrl(a | 1);
 }
 static void mmap_z80ctrl_write8(unsigned int address, unsigned int value)
