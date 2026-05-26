@@ -19,6 +19,7 @@ __license__ = "GPLv3"
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 #include "m68k.h"
@@ -101,6 +102,7 @@ int hint_pending;
 extern int system_clock;
 extern unsigned int lines_per_frame;
 extern unsigned int screen_height;
+extern int frame_counter;
 
 // Define VIDEO MODE
 extern int mode_pal;
@@ -208,6 +210,21 @@ int gwenesis_vdp_hcounter()
     return pixclk & 0x1FF;
 }
 
+static int vdp_vc_from_phy_line(int phy_line)
+{
+    int vc = phy_line;
+    int VERSION_PAL = gwenesis_vdp_status & 1;
+
+    if (VERSION_PAL && mode_pal && (vc >= 267))
+        vc = phy_line - 58;
+    else if (VERSION_PAL && (mode_pal == 0) && (vc >= 259))
+        vc = phy_line - 42;
+    else if ((VERSION_PAL == 0) && (vc >= 235))
+        vc = phy_line - 6;
+    assert(vc < 0x200);
+    return vc;
+}
+
 /******************************************************************************
  *
  *  SEGA 315-5313 VCOUNTER
@@ -217,29 +234,15 @@ int gwenesis_vdp_hcounter()
 //static inline __attribute__((always_inline))
 int gwenesis_vdp_vcounter()
 {
-    /* GPGX-style VC: anchored to the frame loop's scan_line, advanced by elapsed
-     * cycles since the start of this line (system_clock).  Using absolute
-     * m68k.cycles / VDP_CYCLES_PER_LINE wraps to 0 mid-vblank when DMA stalls
-     * carry cycles into the next frame
-     */
+    /* GPGX-style VC: anchored to scan_line, advanced when elapsed cycles reach
+     * the next line (for HV-counter port reads during m68k_run). */
     int elapsed = m68k_cycles_master() - system_clock;
     if (elapsed < 0)
         elapsed = 0;
     int delta = elapsed / (int)VDP_CYCLES_PER_LINE;
     int phy_line = ((int)scan_line + delta) % (int)lines_per_frame;
-    int vc = phy_line;
-    int VERSION_PAL = gwenesis_vdp_status & 1;
 
-    if (VERSION_PAL && mode_pal && (vc >= 267))
-        vc = phy_line - 58;
-    else if (VERSION_PAL && (mode_pal==0) && (vc >= 259))
-        vc = phy_line - 42;
-    else if ((VERSION_PAL == 0 ) && (vc >= 235))
-        vc = phy_line - 6;
-    assert(vc < 0x200);
-
-   // printf("VERSION_PAL:%d , mode_pal:%d,line:%d,vc:%d\n",VERSION_PAL,mode_pal,scan_line,vc);
-    return vc;
+    return vdp_vc_from_phy_line(phy_line);
 }
 /******************************************************************************
  *
@@ -266,18 +269,19 @@ unsigned short gwenesis_vdp_hvcounter()
 //static inline __attribute__((always_inline))
 bool vblank(void)
 {
-    int vc = gwenesis_vdp_vcounter();
- //  printf("vc=%d,REG1_DISP_ENABLED=%d,VBLAN?%d\n",vc,REG1_DISP_ENABLED,
-  // mode_pal?((vc >= 0xF0) && (vc < 0x1FF)):((vc >= 0xE0) && (vc < 0x1FF)));
+    /* Status-register VBLANK uses the frame loop scan_line (not cycle-ahead VC).
+     * Cycle-ahead VC would set VBLANK one line early on the last active line and
+     * breaks Psygnosis raster engines (Shadow of the Beast II, Formula One). */
+    int vc = vdp_vc_from_phy_line((int)scan_line);
 
-    if (REG1_DISP_ENABLED ==0)
+    /* GPGX: VBLANK flag forced when display is blanked (reg1 bit 6 clear). */
+    if (REG1_DISP_ENABLED == 0)
         return true;
 
     if (mode_pal)
         return ((vc >= 0xF0) && (vc < 0x1FF));
     else
         return ((vc >= 0xE0) && (vc < 0x1FF));
-        
 }
 
 /******************************************************************************
@@ -286,11 +290,64 @@ bool vblank(void)
  *   Write an value to specified register
  *
  ******************************************************************************/
+static inline unsigned int vdp_dma_blank_stall_cycles(unsigned int dma_len_words)
+{
+  /* Genesis Plus GX dma_timing[]: blank / display-off = 166 (H32) or 204 (H40)
+   * bytes per scanline for 68K→VDP.  VRAM transfers count length in words
+   * (2 bytes); CRAM/VSRAM length is already in words with adjusted slot count. */
+  unsigned int bytes_per_line = REG12_MODE_H40 ? 204u : 166u;
+  int dest = code_reg & 0x0F;
+
+  if (dest == 0 || dest == 4) {
+    bytes_per_line = REG12_MODE_H40 ? 198u : 161u;
+    return dma_len_words * (unsigned int)VDP_CYCLES_PER_LINE / bytes_per_line;
+  }
+  return dma_len_words * 2u * (unsigned int)VDP_CYCLES_PER_LINE / bytes_per_line;
+}
+
+static inline unsigned int vdp_dma_stall_cap(unsigned int stall)
+{
+  if (stall == 0)
+    return 0;
+
+  unsigned int frame_end =
+      (unsigned int)lines_per_frame * (unsigned int)VDP_CYCLES_PER_LINE;
+  unsigned int cpu_pos = (unsigned int)m68k_cycles_master();
+
+  if (cpu_pos >= frame_end)
+    return 0;
+  {
+    unsigned int max_stall = frame_end - cpu_pos;
+    if (stall > max_stall)
+      return max_stall;
+  }
+  return stall;
+}
+
+static inline void vdp_dma_apply_stall(unsigned int stall)
+{
+  stall = vdp_dma_stall_cap(stall);
+  if (stall > 0)
+    m68k.cycles += (int)stall;
+}
+
 static inline __attribute__((always_inline)) void gwenesis_vdp_register_w(int reg, unsigned char value)
 {
     // Mode4 is not emulated yet. Anyway, access to registers > 0xA is blocked.
     if ((BIT(gwenesis_vdp_regs[0x1], 2)==0) && reg > 0xA)
         return;
+
+    if (reg == 1 && getenv("GWENESIS_DISP_TRACE")) {
+        unsigned char old = gwenesis_vdp_regs[1];
+        int old_disp = BIT(old, 6);
+        int new_disp = BIT(value, 6);
+        if (old_disp != new_disp || (old & 0x74) != (value & 0x74)) {
+            printf("[DISP] frame=%d scan_line=%d vc=%03x mclk=%d sclk=%d REG1:%02x->%02x disp=%s\n",
+                   frame_counter, scan_line, gwenesis_vdp_vcounter(),
+                   m68k_cycles_master(), system_clock, old, value,
+                   new_disp ? "ON" : "OFF");
+        }
+    }
 
     gwenesis_vdp_regs[reg] = value;
     vdpm_log(__FUNCTION__, "reg:%02d <- %02x", reg, value);
@@ -362,7 +419,9 @@ unsigned short status_register_r(void)
     // TODO: FIFO not emulated
     status |= STATUS_FIFO_EMPTY;
 
-    // VBLANK bit
+    /* Recompute VBLANK from beam position; do not inherit stale bit from
+     * gwenesis_vdp_status (frame loop sets it during vblank only). */
+    status &= (unsigned short)~STATUS_VBLANK;
     if (vblank())
         status |= STATUS_VBLANK;
 
@@ -382,6 +441,9 @@ unsigned short status_register_r(void)
         status |= STATUS_SPRITEOVERFLOW;
     if (sprite_collision)
         status |= STATUS_SPRITECOLLISION;
+
+    /* Hardware clears sprite collision flag on status read. */
+    sprite_collision = false;
 
     if (mode_pal)
        status |= STATUS_PAL;
@@ -818,8 +880,8 @@ void gwenesis_vdp_control_port_write(unsigned int value)
         {
           unsigned int stall = 0;
           if (!REG1_DISP_ENABLED) {
-            /* Display off – fast stall (~167 VRAM slots/line, all slots free). */
-            stall = (unsigned int)dma_len * (unsigned int)(VDP_CYCLES_PER_LINE / 167);
+            /* Display blanked: all VRAM slots available (GPGX blank row). */
+            stall = vdp_dma_blank_stall_cycles((unsigned int)dma_len);
           } else if (scan_line < (int)screen_height) {
             /* Active display + display ON: ~16 VRAM slots/line.
              * A large DMA may overflow past the end of active display and
@@ -838,12 +900,13 @@ void gwenesis_vdp_control_port_write(unsigned int value)
                * active-display lines, remainder goes at the fast VBlank rate. */
               unsigned int active_stall  = (unsigned int)active_lines_left * VDP_CYCLES_PER_LINE;
               unsigned int vblank_words  = (unsigned int)(dma_len - words_in_active);
-              unsigned int vblank_stall  = vblank_words * (unsigned int)(VDP_CYCLES_PER_LINE / 167);
+              unsigned int vblank_bytes_per_line = REG12_MODE_H40 ? 204u : 166u;
+              unsigned int vblank_stall  =
+                  vblank_words * 2u * (unsigned int)VDP_CYCLES_PER_LINE / vblank_bytes_per_line;
               stall = active_stall + vblank_stall;
             }
           }
-          /* VBlank + display ON: stall = 0 (no stall). */
-          m68k.cycles += stall;
+          vdp_dma_apply_stall(stall);
         }
         break;
       }

@@ -84,6 +84,12 @@ static int PlanA_lastcol;
 static int Window_firstcol;
 static int Window_lastcol;
 
+/* H-scroll values latched at scanline start (before H-INT/CPU).  VRAM table
+ * updates during the line apply to the next line, matching VDP hardware. */
+static uint16_t latched_scroll_a;
+static uint16_t latched_scroll_b;
+static int latched_scroll_line = -1;
+
 // 16 bits access to VRAM
 #define FETCH16VRAM(A)  ( (VRAM[(A)+1]) | (VRAM[(A)] << 8) )
 
@@ -148,19 +154,46 @@ void gwenesis_vdp_set_buffer(unsigned short *ptr_screen_buffer)
  #define PIX7(P) ( ((P) & 0x0F000000 ) >>  24 )
 
 static inline __attribute__((always_inline))
+void sprite_plot_hipri(uint8_t *dst, uint8_t pix, uint8_t attrs)
+{
+  if (!pix)
+    return;
+  if ((*dst & PIXATTR_SPRITE) != 0) {
+    sprite_collision = true;
+    return;
+  }
+  *dst = attrs | pix;
+}
+
+static inline __attribute__((always_inline))
+void sprite_plot_lopri(uint8_t *dst, uint8_t pix, uint8_t attrs)
+{
+  if (!pix)
+    return;
+  if ((*dst & PIXATTR_SPRITE) != 0) {
+    sprite_collision = true;
+    if ((*dst & PIXATTR_SPRITE_HIPRI) != 0)
+      return;
+  }
+  /* Low priority sprites are drawn behind high priority plane pixels. */
+  if ((attrs & PIXATTR_HIPRI) == 0 && (*dst & PIXATTR_HIPRI) != 0)
+    return;
+  *dst = attrs | pix;
+}
+
+static inline __attribute__((always_inline))
 void draw_pattern_nofliph_sprite(uint8_t *scr, uint32_t p, uint8_t attrs)
 {
   if (p == 0) return;
 
-  /*  not transparent pixel to write AND not already a sprite*/
-  if (((PIX0(p))) && ((scr[0] & PIXATTR_SPRITE) == 0)) scr[0] = attrs | (PIX0(p));
-  if (((PIX1(p))) && ((scr[1] & PIXATTR_SPRITE) == 0)) scr[1] = attrs | (PIX1(p));
-  if (((PIX2(p))) && ((scr[2] & PIXATTR_SPRITE) == 0)) scr[2] = attrs | (PIX2(p));
-  if (((PIX3(p))) && ((scr[3] & PIXATTR_SPRITE) == 0)) scr[3] = attrs | (PIX3(p));
-  if (((PIX4(p))) && ((scr[4] & PIXATTR_SPRITE) == 0)) scr[4] = attrs | (PIX4(p));
-  if (((PIX5(p))) && ((scr[5] & PIXATTR_SPRITE) == 0)) scr[5] = attrs | (PIX5(p));
-  if (((PIX6(p))) && ((scr[6] & PIXATTR_SPRITE) == 0)) scr[6] = attrs | (PIX6(p));
-  if (((PIX7(p))) && ((scr[7] & PIXATTR_SPRITE) == 0)) scr[7] = attrs | (PIX7(p));
+  sprite_plot_hipri(&scr[0], PIX0(p), attrs);
+  sprite_plot_hipri(&scr[1], PIX1(p), attrs);
+  sprite_plot_hipri(&scr[2], PIX2(p), attrs);
+  sprite_plot_hipri(&scr[3], PIX3(p), attrs);
+  sprite_plot_hipri(&scr[4], PIX4(p), attrs);
+  sprite_plot_hipri(&scr[5], PIX5(p), attrs);
+  sprite_plot_hipri(&scr[6], PIX6(p), attrs);
+  sprite_plot_hipri(&scr[7], PIX7(p), attrs);
 }
 
 static inline __attribute__((always_inline))
@@ -168,16 +201,14 @@ void draw_pattern_fliph_sprite(uint8_t *scr, uint32_t p, uint8_t attrs)
 {
   if (p == 0) return;
 
-  /*  not transparent pixel to write AND not already a sprite*/
-  if (((PIX7(p))) && ((scr[0] & PIXATTR_SPRITE) == 0)) scr[0] = attrs | (PIX7(p));
-  if (((PIX6(p))) && ((scr[1] & PIXATTR_SPRITE) == 0)) scr[1] = attrs | (PIX6(p));
-  if (((PIX5(p))) && ((scr[2] & PIXATTR_SPRITE) == 0)) scr[2] = attrs | (PIX5(p));
-  if (((PIX4(p))) && ((scr[3] & PIXATTR_SPRITE) == 0)) scr[3] = attrs | (PIX4(p));
-  if (((PIX3(p))) && ((scr[4] & PIXATTR_SPRITE) == 0)) scr[4] = attrs | (PIX3(p));
-  if (((PIX2(p))) && ((scr[5] & PIXATTR_SPRITE) == 0)) scr[5] = attrs | (PIX2(p));
-  if (((PIX1(p))) && ((scr[6] & PIXATTR_SPRITE) == 0)) scr[6] = attrs | (PIX1(p));
-  if (((PIX0(p))) && ((scr[7] & PIXATTR_SPRITE) == 0)) scr[7] = attrs | (PIX0(p));
-
+  sprite_plot_hipri(&scr[0], PIX7(p), attrs);
+  sprite_plot_hipri(&scr[1], PIX6(p), attrs);
+  sprite_plot_hipri(&scr[2], PIX5(p), attrs);
+  sprite_plot_hipri(&scr[3], PIX4(p), attrs);
+  sprite_plot_hipri(&scr[4], PIX3(p), attrs);
+  sprite_plot_hipri(&scr[5], PIX2(p), attrs);
+  sprite_plot_hipri(&scr[6], PIX1(p), attrs);
+  sprite_plot_hipri(&scr[7], PIX0(p), attrs);
 }
 
 static inline __attribute__((always_inline))
@@ -185,33 +216,24 @@ void draw_pattern_nofliph_sprite_over_planes(uint8_t *scr, uint32_t p, uint8_t a
 {
   if (p == 0) return; 
 
-  /* High priority */
   if (attrs & PIXATTR_HIPRI) {
-
-  /*  not transparent pixel to write AND not already a sprite*/
-  if (((PIX0(p))) && ((scr[0] & PIXATTR_SPRITE) == 0)) scr[0] = attrs | (PIX0(p));
-  if (((PIX1(p))) && ((scr[1] & PIXATTR_SPRITE) == 0)) scr[1] = attrs | (PIX1(p));
-  if (((PIX2(p))) && ((scr[2] & PIXATTR_SPRITE) == 0)) scr[2] = attrs | (PIX2(p));
-  if (((PIX3(p))) && ((scr[3] & PIXATTR_SPRITE) == 0)) scr[3] = attrs | (PIX3(p));
-  if (((PIX4(p))) && ((scr[4] & PIXATTR_SPRITE) == 0)) scr[4] = attrs | (PIX4(p));
-  if (((PIX5(p))) && ((scr[5] & PIXATTR_SPRITE) == 0)) scr[5] = attrs | (PIX5(p));
-  if (((PIX6(p))) && ((scr[6] & PIXATTR_SPRITE) == 0)) scr[6] = attrs | (PIX6(p));
-  if (((PIX7(p))) && ((scr[7] & PIXATTR_SPRITE) == 0)) scr[7] = attrs | (PIX7(p));
-
-  }
-  /* Low priority */
-  else {
-
-  /*  not transparent pixel to write AND not already a sprite or higher priority*/
-  if (((PIX0(p))) && ((scr[0] & PIXATTR_SPRITE_HIPRI) == 0)) scr[0] = attrs | (PIX0(p));
-  if (((PIX1(p))) && ((scr[1] & PIXATTR_SPRITE_HIPRI) == 0)) scr[1] = attrs | (PIX1(p));
-  if (((PIX2(p))) && ((scr[2] & PIXATTR_SPRITE_HIPRI) == 0)) scr[2] = attrs | (PIX2(p));
-  if (((PIX3(p))) && ((scr[3] & PIXATTR_SPRITE_HIPRI) == 0)) scr[3] = attrs | (PIX3(p));
-  if (((PIX4(p))) && ((scr[4] & PIXATTR_SPRITE_HIPRI) == 0)) scr[4] = attrs | (PIX4(p));
-  if (((PIX5(p))) && ((scr[5] & PIXATTR_SPRITE_HIPRI) == 0)) scr[5] = attrs | (PIX5(p));
-  if (((PIX6(p))) && ((scr[6] & PIXATTR_SPRITE_HIPRI) == 0)) scr[6] = attrs | (PIX6(p));
-  if (((PIX7(p))) && ((scr[7] & PIXATTR_SPRITE_HIPRI) == 0)) scr[7] = attrs | (PIX7(p));
-  
+    sprite_plot_hipri(&scr[0], PIX0(p), attrs);
+    sprite_plot_hipri(&scr[1], PIX1(p), attrs);
+    sprite_plot_hipri(&scr[2], PIX2(p), attrs);
+    sprite_plot_hipri(&scr[3], PIX3(p), attrs);
+    sprite_plot_hipri(&scr[4], PIX4(p), attrs);
+    sprite_plot_hipri(&scr[5], PIX5(p), attrs);
+    sprite_plot_hipri(&scr[6], PIX6(p), attrs);
+    sprite_plot_hipri(&scr[7], PIX7(p), attrs);
+  } else {
+    sprite_plot_lopri(&scr[0], PIX0(p), attrs);
+    sprite_plot_lopri(&scr[1], PIX1(p), attrs);
+    sprite_plot_lopri(&scr[2], PIX2(p), attrs);
+    sprite_plot_lopri(&scr[3], PIX3(p), attrs);
+    sprite_plot_lopri(&scr[4], PIX4(p), attrs);
+    sprite_plot_lopri(&scr[5], PIX5(p), attrs);
+    sprite_plot_lopri(&scr[6], PIX6(p), attrs);
+    sprite_plot_lopri(&scr[7], PIX7(p), attrs);
   }
 }
 
@@ -220,35 +242,25 @@ void draw_pattern_fliph_sprite_over_planes(uint8_t *scr, uint32_t p, uint8_t att
 {
   if (p == 0) return;
 
-  /* High priority */
   if (attrs & PIXATTR_HIPRI) {
-
-  /*  not transparent pixel to write AND not already a sprite*/
-  if (((PIX7(p))) && ((scr[0] & PIXATTR_SPRITE) == 0)) scr[0] = attrs | (PIX7(p));
-  if (((PIX6(p))) && ((scr[1] & PIXATTR_SPRITE) == 0)) scr[1] = attrs | (PIX6(p));
-  if (((PIX5(p))) && ((scr[2] & PIXATTR_SPRITE) == 0)) scr[2] = attrs | (PIX5(p));
-  if (((PIX4(p))) && ((scr[3] & PIXATTR_SPRITE) == 0)) scr[3] = attrs | (PIX4(p));
-  if (((PIX3(p))) && ((scr[4] & PIXATTR_SPRITE) == 0)) scr[4] = attrs | (PIX3(p));
-  if (((PIX2(p))) && ((scr[5] & PIXATTR_SPRITE) == 0)) scr[5] = attrs | (PIX2(p));
-  if (((PIX1(p))) && ((scr[6] & PIXATTR_SPRITE) == 0)) scr[6] = attrs | (PIX1(p));
-  if (((PIX0(p))) && ((scr[7] & PIXATTR_SPRITE) == 0)) scr[7] = attrs | (PIX0(p));
-
+    sprite_plot_hipri(&scr[0], PIX7(p), attrs);
+    sprite_plot_hipri(&scr[1], PIX6(p), attrs);
+    sprite_plot_hipri(&scr[2], PIX5(p), attrs);
+    sprite_plot_hipri(&scr[3], PIX4(p), attrs);
+    sprite_plot_hipri(&scr[4], PIX3(p), attrs);
+    sprite_plot_hipri(&scr[5], PIX2(p), attrs);
+    sprite_plot_hipri(&scr[6], PIX1(p), attrs);
+    sprite_plot_hipri(&scr[7], PIX0(p), attrs);
+  } else {
+    sprite_plot_lopri(&scr[0], PIX7(p), attrs);
+    sprite_plot_lopri(&scr[1], PIX6(p), attrs);
+    sprite_plot_lopri(&scr[2], PIX5(p), attrs);
+    sprite_plot_lopri(&scr[3], PIX4(p), attrs);
+    sprite_plot_lopri(&scr[4], PIX3(p), attrs);
+    sprite_plot_lopri(&scr[5], PIX2(p), attrs);
+    sprite_plot_lopri(&scr[6], PIX1(p), attrs);
+    sprite_plot_lopri(&scr[7], PIX0(p), attrs);
   }
-  /* Low priority */
-  else {
-
-  /*  not transparent pixel to write AND not already a sprite or higher priority*/
-  if (((PIX7(p))) && ((scr[0] & PIXATTR_SPRITE_HIPRI) == 0)) scr[0] = attrs | (PIX7(p));
-  if (((PIX6(p))) && ((scr[1] & PIXATTR_SPRITE_HIPRI) == 0)) scr[1] = attrs | (PIX6(p));
-  if (((PIX5(p))) && ((scr[2] & PIXATTR_SPRITE_HIPRI) == 0)) scr[2] = attrs | (PIX5(p));
-  if (((PIX4(p))) && ((scr[3] & PIXATTR_SPRITE_HIPRI) == 0)) scr[3] = attrs | (PIX4(p));
-  if (((PIX3(p))) && ((scr[4] & PIXATTR_SPRITE_HIPRI) == 0)) scr[4] = attrs | (PIX3(p));
-  if (((PIX2(p))) && ((scr[5] & PIXATTR_SPRITE_HIPRI) == 0)) scr[5] = attrs | (PIX2(p));
-  if (((PIX1(p))) && ((scr[6] & PIXATTR_SPRITE_HIPRI) == 0)) scr[6] = attrs | (PIX1(p));
-  if (((PIX0(p))) && ((scr[7] & PIXATTR_SPRITE_HIPRI) == 0)) scr[7] = attrs | (PIX0(p));
-  
-  }
-
 }
 
 /******************************************************************************
@@ -554,6 +566,15 @@ unsigned int get_hscroll_vram(int line)
 
     return table + idx*4;
 }
+
+void gwenesis_vdp_latch_line_scroll(int line)
+{
+  unsigned int base = get_hscroll_vram(line);
+  latched_scroll_a = (uint16_t)(FETCH16VRAM(base + 0) & 0x3FF);
+  latched_scroll_b = (uint16_t)(FETCH16VRAM(base + 2) & 0x3FF);
+  latched_scroll_line = line;
+}
+
 /******************************************************************************
  *
  *  Render PLANE B on screen line
@@ -566,7 +587,10 @@ void draw_line_b(int line)
   uint8_t *scr  = &render_buffer[PIX_OVERFLOW];
 
   unsigned int ntaddr = REG4_NAMETABLE_B;
-  uint16_t scrollx=FETCH16VRAM(get_hscroll_vram(line) + 2) & 0x3FF;
+  uint16_t scrollx = (latched_scroll_line == line)
+                         ? latched_scroll_b
+                         : (uint16_t)(FETCH16VRAM(get_hscroll_vram(line) + 2) &
+                                      0x3FF);
   uint16_t *vsram = &VSRAM[1];
   uint8_t *end = scr + screen_width;
 
@@ -612,7 +636,10 @@ void draw_line_aw(int line) {
   uint8_t *scr  = &render_buffer[PIX_OVERFLOW];
 
   unsigned int ntaddr = REG2_NAMETABLE_A;
-  uint16_t scrollx=FETCH16VRAM(get_hscroll_vram(line) + 0) & 0x3FF;
+  uint16_t scrollx = (latched_scroll_line == line)
+                         ? latched_scroll_a
+                         : (uint16_t)(FETCH16VRAM(get_hscroll_vram(line) + 0) &
+                                      0x3FF);
   uint16_t *vsram = &VSRAM[0];
 
   // Check if we are in the window region only
@@ -627,7 +654,8 @@ void draw_line_aw(int line) {
   int Window_first = Window_firstcol;
 
   if (window_down) {
-    if (line > Window_line) {
+    /* GPGX: window occupies line >= boundary when DOWN=1. */
+    if (line >= Window_line) {
       PlanA_first = PlanA_last = 0;
       Window_last = screen_width;
       Window_first = 0;
