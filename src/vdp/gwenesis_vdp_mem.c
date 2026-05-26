@@ -337,18 +337,6 @@ static inline __attribute__((always_inline)) void gwenesis_vdp_register_w(int re
     if ((BIT(gwenesis_vdp_regs[0x1], 2)==0) && reg > 0xA)
         return;
 
-    if (reg == 1 && getenv("GWENESIS_DISP_TRACE")) {
-        unsigned char old = gwenesis_vdp_regs[1];
-        int old_disp = BIT(old, 6);
-        int new_disp = BIT(value, 6);
-        if (old_disp != new_disp || (old & 0x74) != (value & 0x74)) {
-            printf("[DISP] frame=%d scan_line=%d vc=%03x mclk=%d sclk=%d REG1:%02x->%02x disp=%s\n",
-                   frame_counter, scan_line, gwenesis_vdp_vcounter(),
-                   m68k_cycles_master(), system_clock, old, value,
-                   new_disp ? "ON" : "OFF");
-        }
-    }
-
     gwenesis_vdp_regs[reg] = value;
     vdpm_log(__FUNCTION__, "reg:%02d <- %02x", reg, value);
 
