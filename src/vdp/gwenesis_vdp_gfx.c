@@ -84,10 +84,11 @@ static int PlanA_lastcol;
 static int Window_firstcol;
 static int Window_lastcol;
 
-/* H-scroll values latched at scanline start (before H-INT/CPU).  VRAM table
- * updates during the line apply to the next line, matching VDP hardware. */
+/* Scroll state latched at scanline start (before H-INT/CPU).  VRAM/VSRAM
+ * updates during the line apply to the next line (GPGX / hardware). */
 static uint16_t latched_scroll_a;
 static uint16_t latched_scroll_b;
+static uint16_t latched_vsram[VSRAM_MAX_SIZE];
 static int latched_scroll_line = -1;
 
 // 16 bits access to VRAM
@@ -589,6 +590,7 @@ void gwenesis_vdp_latch_line_scroll(int line)
   unsigned int base = get_hscroll_vram(line);
   latched_scroll_a = (uint16_t)(FETCH16VRAM(base + 0) & 0x3FF);
   latched_scroll_b = (uint16_t)(FETCH16VRAM(base + 2) & 0x3FF);
+  memcpy(latched_vsram, VSRAM, sizeof(latched_vsram));
   latched_scroll_line = line;
 }
 
@@ -608,7 +610,7 @@ void draw_line_b(int line)
                          ? latched_scroll_b
                          : (uint16_t)(FETCH16VRAM(get_hscroll_vram(line) + 2) &
                                       0x3FF);
-  uint16_t *vsram = &VSRAM[1];
+  uint16_t *vsram = (latched_scroll_line == line) ? &latched_vsram[1] : &VSRAM[1];
   uint8_t *end = scr + screen_width;
 
   //bool column_scrolling = BIT(gwenesis_vdp_regs[11], 2);
@@ -657,7 +659,7 @@ void draw_line_aw(int line) {
                          ? latched_scroll_a
                          : (uint16_t)(FETCH16VRAM(get_hscroll_vram(line) + 0) &
                                       0x3FF);
-  uint16_t *vsram = &VSRAM[0];
+  uint16_t *vsram = (latched_scroll_line == line) ? &latched_vsram[0] : &VSRAM[0];
 
   // Check if we are in the window region only
   // if it's the case, we cancel the plane A drawing
