@@ -534,6 +534,23 @@ void draw_pattern_planeA(uint8_t *scr, uint16_t name, int paty) {
 static  uint16_t ntwidth_x2;
 static  uint16_t ntw_mask, nth_mask;
 
+static inline __attribute__((always_inline))
+void update_playfield_size(void)
+{
+  int ntwidth = BITS(gwenesis_vdp_regs[16], 0, 2);
+  int ntheight = BITS(gwenesis_vdp_regs[16], 4, 2);
+  ntwidth = (ntwidth + 1) * 32;
+  ntheight = (ntheight + 1) * 32;
+  ntw_mask = (uint16_t)(ntwidth - 1);
+  nth_mask = (uint16_t)(ntheight - 1);
+  ntwidth_x2 = (uint16_t)(ntwidth * 2);
+
+  if (mode_h40)
+    base_w = ((REG3_NAMETABLE_W & 0x1e) << 11);
+  else
+    base_w = ((REG3_NAMETABLE_W & 0x1f) << 11);
+}
+
 /******************************************************************************
  *
  *  Return the Horizontal scrolling
@@ -950,23 +967,9 @@ void draw_sprites(int line)
 void gwenesis_vdp_render_config()
 {
     mode_h40 = REG12_MODE_H40;
-
-    int ntwidth = BITS(gwenesis_vdp_regs[16], 0, 2);
-    int ntheight = BITS(gwenesis_vdp_regs[16], 4, 2);
-    ntwidth = (ntwidth + 1) * 32;
-    ntheight = (ntheight + 1) * 32;
-    ntw_mask = ntwidth - 1;
-    nth_mask = ntheight - 1;
-    ntwidth_x2= ntwidth *2;
+    update_playfield_size();
 
     // Window & A planes separation
-
-    if (mode_h40)
-        base_w = ((REG3_NAMETABLE_W & 0x1e) << 11);
-    else
-        base_w = ((REG3_NAMETABLE_W & 0x1f) << 11);
-
-
     bool window_right = BIT(gwenesis_vdp_regs[17], 7);
 
     // int window_is_bugged = 0;
@@ -1035,6 +1038,7 @@ blit_4to5_line(uint16_t *in, uint16_t *out) {
 void gwenesis_vdp_render_line(int line)
 {
   mode_h40 = REG12_MODE_H40;
+  update_playfield_size();
   //mode_pal = REG1_PAL;
 
   vdpg_log(__FUNCTION__,": %3d",line);
