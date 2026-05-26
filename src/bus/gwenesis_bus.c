@@ -21,7 +21,6 @@ __license__ = "GPLv3"
 #include <stdint.h>
 #include <string.h>
 #include <assert.h>
-#include <ctype.h>
 
 #include "m68k.h"
 
@@ -371,10 +370,12 @@ void load_cartridge()
     if (ROM_DATA_LENGTH == 0x80000) {
         if (strstr(info.product, "00004054-01") && info.checksum == 0xA4B3) {
             gwenesis_quackshot_map = 1;
+#if !BUS_DISABLE_LOGGING
             printf("QuackShot Rev A custom ROM mapping enabled\n");
         } else {
             printf("QuackShot map check: product='%s' checksum=%04X (no match)\n",
                    info.product, info.checksum);
+#endif
         }
     }
     /* ------ SRAM detection from ROM header ------ */
@@ -406,8 +407,10 @@ void load_cartridge()
 
      if (ROM_DATA_LENGTH > 0x400000) {
          gwenesis_ssf2_enabled = 1;
+#if !BUS_DISABLE_LOGGING
          printf("SSF2 mapper enabled (ROM size: %d KB)\n",
                ROM_DATA_LENGTH / 1024);
+#endif
      }
  }
 #else
@@ -538,124 +541,72 @@ void reset_emulation() {
 
 /******************************************************************************
  *
- *   Set Region
- *   Look at ROM to set console compatible region
+ *   Region (GPGX get_region() country parsing, Gwenesis 3-region mapping)
  *
  ******************************************************************************/
-void set_region(gwenesis_rom_info_t *info)
-{    
-  /*
-    old style : JUE characters
-    J : Domestic 60Hz (Asia)
-    U : Oversea  60Hz (USA) 
-    E : Oversea  50Hz (Europe) 
-
-    new style : 1st character
-    bit 0 : +1 Domestic 60Hz (Asia)
-    bit 1 : +2 Domestc  50Hz (Asia)
-    bit 2:  +4 Oversea  60Hz (USA) 
-    bit 3:  +4 Oversea  50Hz (Europe) 
-  */
+/* Country bitmask from ROM header @ $1F0 (Gens/GPGX). */
+static int gwenesis_country_from_header(const char r[3])
+{
+  if (!memcmp(r, "eur", 3) || !memcmp(r, "EUR", 3))
+    return 8;
+  if (!memcmp(r, "jap", 3) || !memcmp(r, "JAP", 3))
+    return 1;
+  if (!memcmp(r, "usa", 3) || !memcmp(r, "USA", 3))
+    return 4;
 
   int country = 0;
-
-    /* from Gens */
-    if (!memcmp(info->region, "eur", 3)) country |= 8;
-    else if (!memcmp(info->region, "EUR", 3)) country |= 8;
-    else if (!memcmp(info->region, "jap", 3)) country |= 1;
-    else if (!memcmp(info->region, "JAP", 3)) country |= 1;
-    else if (!memcmp(info->region, "usa", 3)) country |= 4;
-    else if (!memcmp(info->region, "USA", 3)) country |= 4;
-    else
-    {
-      int i;
-      unsigned char c;
-
-      /* look for each characters */
-      for(i = 0; i < 3; i++)
-      {
-        c = info->region[i];
-
-        if (c == 'U') country |= 4;
-        else if (c == 'E' || c == 'e' ) country |= 8;
-        else if (c == 'J' || c == 'j' ) country |= 1;
-        else if (c == 'K' || c == 'k' ) country |= 1;
-        else if (c < 16) country |= c;
-        else if ((c >= '0') && (c <= '9')) country |= c - '0';
-        else if ((c >= 'A') && (c <= 'F')) country |= c - 'A' + 10;
-      }
-    }
-    printf("country code=%01x : ",country);
-      /* set default console region (USA > EUROPE > JAPAN) */
-      /*
-      IO REG0	:	MODE 	VMOD 	DISK 	RSV 	VER3 	VER2 	VER1 	VER0
-      MODE (R) 	0: Domestic Model
-  	            1: Overseas Model
-      VMOD (R) 	0: NTSC CPU clock 7.67 MHz
-  	            1: PAL CPU clock 7.60 MHz
-      */
-
-    /* USA 60Hz*/
-    if (country & 4){
-      printf("USA 60Hz\n");
-      gwenesis_io_set_reg(0, 0x81);
-      gwenesis_vdp_status &= 0xFFFE;
-      mode_pal = 0;
-      gwenesis_detected_region = 0;
-      return;
-    }
-    /* EUROPE 50Hz */
-    if (country & 8){
-      printf("Europe 50Hz\n");
-      gwenesis_io_set_reg(0, 0xC1);
-      gwenesis_vdp_status |= 0x1;
-      mode_pal = 1;
-      gwenesis_detected_region = 1;
-      return;
-    }
-    /* set Asia 60HZ */
-    if (country & 1){
-      printf("Asia 60Hz\n");
-      gwenesis_io_set_reg(0, 0x1);
-      gwenesis_vdp_status &= 0xFFFE;
-      mode_pal = 0;
-      gwenesis_detected_region = 2;
-      return;
-    }
-    printf("default USA 60Hz\n");
-    gwenesis_io_set_reg(0, 0x81);
-    gwenesis_vdp_status &= 0xFFFE;
-    mode_pal = 0;
-    gwenesis_detected_region = 0;
-
+  for (int i = 0; i < 3; i++) {
+    unsigned char c = (unsigned char)r[i];
+    if (c >= 'a' && c <= 'z')
+      c = (unsigned char)(c - ('a' - 'A'));
+    if (c == 'U')
+      country |= 4;
+    else if (c == 'J' || c == 'K')
+      country |= 1;
+    else if (c == 'E')
+      country |= 8;
+    else if (c < 16)
+      country |= c;
+    else if (c >= '0' && c <= '9')
+      country |= c - '0';
+    else if (c >= 'A' && c <= 'F')
+      country |= c - 'A' + 10;
+  }
+  return country;
 }
 
-/* Apply a region directly, bypassing ROM header detection.
- * region_code: 0=USA (NTSC overseas), 1=Europe (PAL), 2=Japan (NTSC domestic).
- * Call after load_cartridge() and before gwenesis_system_init() / power_on(). */
+/* Gwenesis menu order: USA > Europe > Japan (GPGX uses USA > Japan > Europe). */
+static int gwenesis_region_from_country(int country)
+{
+  if (country & 4)
+    return 0;
+  if (country & 8)
+    return 1;
+  if (country & 1)
+    return 2;
+  return 0;
+}
+
 void gwenesis_apply_region_override(int region_code)
 {
-    switch (region_code) {
-    case 1: /* Europe PAL */
-        printf("Europe 50Hz\n");
-        gwenesis_io_set_reg(0, 0xC1);
-        gwenesis_vdp_status |= 0x1;
-        mode_pal = 1;
-        break;
-    case 2: /* Japan NTSC domestic */
-        printf("Asia 60Hz\n");
-        gwenesis_io_set_reg(0, 0x01);
-        gwenesis_vdp_status &= 0xFFFE;
-        mode_pal = 0;
-        break;
-    default: /* 0: USA NTSC overseas */
-        printf("Asia 60Hz\n");
-        gwenesis_io_set_reg(0, 0x81);
-        gwenesis_vdp_status &= 0xFFFE;
-        mode_pal = 0;
-        break;
-    }
-    gwenesis_detected_region = region_code;
+  static const unsigned char io_reg0[3] = { 0x81, 0xC1, 0x01 };
+
+  if ((unsigned)region_code > 2u)
+    region_code = 0;
+
+  gwenesis_io_set_reg(0, io_reg0[region_code]);
+  mode_pal = (region_code == 1);
+  if (mode_pal)
+    gwenesis_vdp_status |= 1;
+  else
+    gwenesis_vdp_status &= (unsigned short)~1u;
+  gwenesis_detected_region = region_code;
+}
+
+static void set_region(gwenesis_rom_info_t *info)
+{
+  gwenesis_apply_region_override(
+      gwenesis_region_from_country(gwenesis_country_from_header(info->region)));
 }
 
 /* Forward declarations for 0xA1xxxx dispatcher handlers */
