@@ -30,7 +30,9 @@ __license__ = "GPLv3"
 #include "gwenesis_sn76489.h"
 #include "gwenesis_savestate.h"
 
+#ifdef LINUX_EMU
 #include <assert.h>
+#endif
 
 #ifdef TARGET_GNW
 #pragma GCC optimize("Ofast")
@@ -167,6 +169,8 @@ void gwenesis_vdp_reset() {
   hint_pending = 0;
   // _vcounter = 0;
   gwenesis_vdp_status = 0x3C00 | STATUS_FIFO_EMPTY;
+  if (mode_pal)
+    gwenesis_vdp_status |= STATUS_PAL;
   // //line_counter_interrupt = 0;
   hvcounter_latched = 0;
 
@@ -212,17 +216,19 @@ int gwenesis_vdp_hcounter()
 
 static int vdp_vc_from_phy_line(int phy_line)
 {
-    int vc = phy_line;
-    int VERSION_PAL = gwenesis_vdp_status & 1;
+  int vc = phy_line;
+  int version_pal = mode_pal;
 
-    if (VERSION_PAL && mode_pal && (vc >= 267))
-        vc = phy_line - 58;
-    else if (VERSION_PAL && (mode_pal == 0) && (vc >= 259))
-        vc = phy_line - 42;
-    else if ((VERSION_PAL == 0) && (vc >= 235))
+  if (version_pal && mode_pal && (vc >= 267))
+    vc = phy_line - 58;
+  else if (version_pal && (mode_pal == 0) && (vc >= 259))
+    vc = phy_line - 42;
+  else if ((version_pal == 0) && (vc >= 235))
         vc = phy_line - 6;
-    assert(vc < 0x200);
-    return vc;
+#ifdef LINUX_EMU
+  assert(vc < 0x200);
+#endif
+  return vc;
 }
 
 /******************************************************************************
@@ -259,8 +265,10 @@ unsigned short gwenesis_vdp_hvcounter()
 
     int hc = gwenesis_vdp_hcounter();
     int vc = gwenesis_vdp_vcounter();
+#ifdef LINUX_EMU
     assert(vc < 512);
     assert(hc < 512);
+#endif
 
     return ((vc & 0xFF) << 8) | (hc >> 1);
 
@@ -278,7 +286,8 @@ bool vblank(void)
     if (REG1_DISP_ENABLED == 0)
         return true;
 
-    if (mode_pal)
+    /* V28 (224 lines): VBLANK at VC 0xE0; V30 (240 lines): at 0xF0 (REG1 M2). */
+    if (REG1_PAL)
         return ((vc >= 0xF0) && (vc < 0x1FF));
     else
         return ((vc >= 0xE0) && (vc < 0x1FF));
