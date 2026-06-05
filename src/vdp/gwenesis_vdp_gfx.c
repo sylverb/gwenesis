@@ -1137,7 +1137,9 @@ void gwenesis_vdp_render_line(int line)
             break;
           }
         } else {
-          screen_buffer_line[x] = CRAM565[plane];
+          screen_buffer_line[x] = (plane & PIXATTR_HIPRI)
+                                      ? CRAM565[plane]
+                                      : (CRAM565[plane] >> 1);
         }
       }
 
@@ -1180,7 +1182,9 @@ void gwenesis_vdp_render_line(int line)
             break;
           }
         } else {
-          buffer_line_H32[x] = CRAM565[plane];
+          buffer_line_H32[x] = (plane & PIXATTR_HIPRI)
+                                   ? CRAM565[plane]
+                                   : (CRAM565[plane] >> 1);
         }
       }
 
@@ -1231,7 +1235,8 @@ void gwenesis_vdp_render_line(int line)
           break;
         }
       } else {
-        rgb565 = CRAM565[plane];
+        rgb565 = (plane & PIXATTR_HIPRI) ? CRAM565[plane]
+                                         : (CRAM565[plane] >> 1);
       }
       tmp_line[x]=rgb565;
       /*
