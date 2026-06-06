@@ -35,7 +35,10 @@ __license__ = "GPLv3"
 
 #ifdef TARGET_GNW
 #include "gw_malloc.h"
-  #pragma GCC optimize("Ofast")
+#endif
+#if defined(TARGET_GNW) && !defined(LINUX_EMU)
+#pragma GCC optimize("Ofast")
+#include "main.h"
 #endif
 
 /* Defined in gwenesis_vdp_gfx.c — mirrors VDP REG1_PAL, set by set_region() */
@@ -131,8 +134,14 @@ static unsigned short gwenesis_rom_realchecksum(unsigned int rom_size)
   if (rom_size < 0x202u)
     return 0;
 
-  for (i = 0x200; i + 1u < rom_size; i += 2)
+  for (i = 0x200; i + 1u < rom_size; i += 2) {
     sum += ((unsigned int)ROM_HEADER_BYTE(i) << 8) | ROM_HEADER_BYTE(i + 1);
+#if defined(TARGET_GNW) && !defined(LINUX_EMU)
+    if (i % 2*1024*1024 == 0) {
+      wdog_refresh();
+    }
+#endif
+  }
 
   return (unsigned short)sum;
 }
