@@ -161,6 +161,7 @@
 #include "ym2612.h"
 #include "gwenesis_bus.h"
 #include "gwenesis_savestate.h"
+#include "gw_malloc.h"
 
 typedef uint32_t UINT32;
 typedef uint16_t UINT16;
@@ -233,12 +234,20 @@ void ym_log(const char *subs, const char *fmt, ...) {
 *   TL_RES_LEN - sinus resolution (X axis)
 */
 #define TL_TAB_LEN (13*2*TL_RES_LEN)
+#ifdef TARGET_GNW
+#define LFO_PM_TABLE_LEN (128*8*16)
+static signed int *tl_tab;
+static unsigned int *sin_tab;
+static UINT8 *lfo_pm_table;
+#else
 static signed int tl_tab[TL_TAB_LEN];
+static unsigned int sin_tab[SIN_LEN];
+static INT32 lfo_pm_table[128*8*32]; /* 128 combinations of 7 bits meaningful (of F-NUMBER), 8 LFO depths, 32 LFO output levels per one depth */
+#endif
 
 #define ENV_QUIET    (TL_TAB_LEN>>3)
 
 /* sin waveform table in 'decibel' scale */
-static unsigned int sin_tab[SIN_LEN] ;
 
 /* sustain level table (3dB per step) */
 /* bit0, bit1, bit2, bit3, bit4, bit5, bit6 */
@@ -530,12 +539,7 @@ static const UINT8 lfo_pm_output[7*8][8]={
 
 };
 
-/* all 128 LFO PM waveforms */
-#ifdef TARGET_GNW
-static UINT8 lfo_pm_table[128*8*16]; /* 128 combinations of 7 bits meaningful (of F-NUMBER), 8 LFO depths, 16 LFO output levels per one depth (compact for GNW) */
-#else
-static INT32 lfo_pm_table[128*8*32]; /* 128 combinations of 7 bits meaningful (of F-NUMBER), 8 LFO depths, 32 LFO output levels per one depth */
-#endif
+/* all 128 LFO PM waveforms — allocated in init_tables() on TARGET_GNW */
 
 /* register number to channel number , slot offset */
 #define OPN_CHAN(N) (N&3)
@@ -1866,6 +1870,18 @@ static void reset_channels(FM_CH *CH , int num )
   }
 }
 
+#ifdef TARGET_GNW
+/* Lookup tables filled once by init_tables(); live in cacheable AHB SRAM. */
+static void ym2612_alloc_tables(void)
+{
+  if (tl_tab)
+    return;
+  tl_tab = (signed int *)ahb_calloc(TL_TAB_LEN, sizeof(signed int));
+  lfo_pm_table = (UINT8 *)ahb_calloc(LFO_PM_TABLE_LEN, sizeof(UINT8));
+  sin_tab = (unsigned int *)ahb_calloc(SIN_LEN, sizeof(unsigned int));
+}
+#endif
+
 /* initialize generic tables */
 static void init_tables(void)
 {
@@ -1997,6 +2013,7 @@ void YM2612Init(void)
 #ifdef TARGET_GNW
   static unsigned init_table_done = 0;
   if (init_table_done == 0) {
+    ym2612_alloc_tables();
     init_tables();
     init_table_done = 1;
   }
