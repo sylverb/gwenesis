@@ -233,12 +233,24 @@ void ym_log(const char *subs, const char *fmt, ...) {
 *   TL_RES_LEN - sinus resolution (X axis)
 */
 #define TL_TAB_LEN (13*2*TL_RES_LEN)
-static signed int tl_tab[TL_TAB_LEN];
+/* Place the YM2612 lookup tables in the dedicated `.audio` section so
+ * they land in AHBRAM rather than the per-emulator RAM_EMU overlay.
+ * tl_tab alone is 26 KB; combined with sin_tab (4 KB) and lfo_pm_table
+ * (16 KB) they consume ~46 KB of writable RAM that the retro-go-sd
+ * RAM_EMU budget cannot afford. The audio path already targets AHBRAM
+ * via the linker (._ahbram section catches *(.audio) + *(.ahb)). */
+#ifdef TARGET_GNW
+#define _YM2612_AUDIO_SECTION __attribute__((section(".audio")))
+#else
+#define _YM2612_AUDIO_SECTION
+#endif
+
+static signed int tl_tab[TL_TAB_LEN] _YM2612_AUDIO_SECTION;
 
 #define ENV_QUIET    (TL_TAB_LEN>>3)
 
 /* sin waveform table in 'decibel' scale */
-static unsigned int sin_tab[SIN_LEN] ;
+static unsigned int sin_tab[SIN_LEN] _YM2612_AUDIO_SECTION;
 
 /* sustain level table (3dB per step) */
 /* bit0, bit1, bit2, bit3, bit4, bit5, bit6 */
@@ -532,9 +544,9 @@ static const UINT8 lfo_pm_output[7*8][8]={
 
 /* all 128 LFO PM waveforms */
 #ifdef TARGET_GNW
-static UINT8 lfo_pm_table[128*8*16]; /* 128 combinations of 7 bits meaningful (of F-NUMBER), 8 LFO depths, 16 LFO output levels per one depth (compact for GNW) */
+static UINT8 lfo_pm_table[128*8*16] _YM2612_AUDIO_SECTION; /* 128 combinations of 7 bits meaningful (of F-NUMBER), 8 LFO depths, 16 LFO output levels per one depth (compact for GNW) */
 #else
-static INT32 lfo_pm_table[128*8*32]; /* 128 combinations of 7 bits meaningful (of F-NUMBER), 8 LFO depths, 32 LFO output levels per one depth */
+static INT32 lfo_pm_table[128*8*32] _YM2612_AUDIO_SECTION; /* 128 combinations of 7 bits meaningful (of F-NUMBER), 8 LFO depths, 32 LFO output levels per one depth */
 #endif
 
 /* register number to channel number , slot offset */
