@@ -151,30 +151,95 @@
 
 // 16/32 bits acces to RAM/ROM
 
-#if GNW_TARGET_MARIO != 0 | GNW_TARGET_ZELDA != 0
+#ifdef TARGET_GNW
 
 	extern const unsigned char *ROM_DATA;
+	extern unsigned int ROM_DATA_LENGTH;
 	extern unsigned char *M68K_RAM;
 #else
 
 	extern unsigned char ROM_DATA[];
 	extern unsigned char M68K_RAM[];
+	/* On desktop the ROM is always fully loaded, so bounds-check always passes */
+	static inline unsigned int gwenesis_rom_data_length(void) { return 0xFFFFFFFFu; }
+	#define ROM_DATA_LENGTH gwenesis_rom_data_length()
+
 #endif
 
-#define FETCH8ROM(A) ((ROM_DATA[((A) ^ 1)]))
-#define FETCH16ROM(A) ((*(unsigned short *)&ROM_DATA[(A)]))
-#define FETCH32ROM(A) ( (*(unsigned int *)&ROM_DATA[(A)] << 16) | (*(unsigned int *)&ROM_DATA[(A)] >> 16) )
 
-#if GNW_TARGET_MARIO !=0 || GNW_TARGET_ZELDA!=0
+#ifdef TARGET_GNW
 
-/* Direct access to ITCRAM as M68KRAM on STM32H7 mapped at 0x0 !!  */
-#define FETCH8RAM(A)    (*(unsigned char  *)(((A)&0XFFFF) ^ 1))
-#define FETCH16RAM(A)   (*(unsigned short *)((A)&0XFFFF))
-#define FETCH32RAM(A) (((*(unsigned int *)((A)&0XFFFF)) << 16) | ((*(unsigned int *)((A)&0XFFFF)) >> 16))
+/*
+ * Under TARGET_GNW the original code assumes STM32H7 memory mapping where the
+ * emulated M68K RAM lives at virtual address 0x0000.
+ *
+ * On desktop Linux we can't map RAM at address 0x0, so when LINUX_EMU is
+ * enabled we redirect RAM accesses to the allocated `M68K_RAM` pointer.
+ */
+#if defined(LINUX_EMU)
+#define FETCH8RAM(A) ((M68K_RAM[(A ^ 1) & 0xFFFF]))
+#define FETCH16RAM(A) \
+  ({ unsigned int __a = ((A) & 0xFFFF); \
+     (unsigned int)M68K_RAM[__a] | ((unsigned int)M68K_RAM[(__a + 1u) & 0xFFFF] << 8); })
+#define FETCH32RAM(A) \
+  ({ unsigned int __a = ((A) & 0xFFFF); \
+     (((unsigned int)M68K_RAM[__a] | ((unsigned int)M68K_RAM[(__a + 1u) & 0xFFFF] << 8)) << 16) | \
+      ((unsigned int)M68K_RAM[(__a + 2u) & 0xFFFF] | ((unsigned int)M68K_RAM[(__a + 3u) & 0xFFFF] << 8)); })
 
-#define WRITE8RAM(A, V)  ((*(unsigned char  *)(((A)&0XFFFF) ^ 1)) = (V))
-#define WRITE16RAM(A, V) ((*(unsigned short *)( (A)&0XFFFF))      = (V))
-#define WRITE32RAM(A, V) ((*(unsigned int   *)( (A)&0XFFFF))      = (((V) << 16) | ((V) >> 16)))
+#define WRITE8RAM(A, V) (M68K_RAM[(A ^ 1) & 0xFFFF] = (V))
+#define WRITE16RAM(A, V) do { \
+  unsigned int __a = ((A) & 0xFFFF); \
+  unsigned int __v = (unsigned int)(V); \
+  M68K_RAM[__a] = (unsigned char)(__v & 0xFFu); \
+  M68K_RAM[(__a + 1u) & 0xFFFF] = (unsigned char)((__v >> 8) & 0xFFu); \
+} while (0)
+#define WRITE32RAM(A, V) do { \
+  unsigned int __a = ((A) & 0xFFFF); \
+  unsigned int __v = (unsigned int)(V); \
+  M68K_RAM[__a]                    = (unsigned char)((__v >> 16) & 0xFFu); \
+  M68K_RAM[(__a + 1u) & 0xFFFF]    = (unsigned char)((__v >> 24) & 0xFFu); \
+  M68K_RAM[(__a + 2u) & 0xFFFF]    = (unsigned char)(__v & 0xFFu); \
+  M68K_RAM[(__a + 3u) & 0xFFFF]    = (unsigned char)((__v >> 8) & 0xFFu); \
+} while (0)
+#else
+/* Safe byte-by-byte access to ITCRAM (STM32H7, mapped at 0x0).
+ *
+ * The previous code used direct 16/32-bit pointer casts: *(short*)((A)&0xFFFF)
+ * This caused a BusFault (PRECISERR, BFAR=0x10000) whenever A&0xFFFF >= 0xFFFE
+ * for 16-bit accesses or >= 0xFFFC for 32-bit accesses, because the hardware
+ * read/write spilled past the end of the 64 KB ITCM window (0x0000-0xFFFF).
+ *
+ * The byte-by-byte approach with explicit & 0xFFFF wrapping on every byte
+ * address eliminates the overflow entirely. FETCH8RAM keeps the ^1 byte-swap
+ * required by RAM_SWAP. FETCH16/32 reconstruct the M68K (big-endian) value
+ * from the physically byte-swapped ITCRAM storage. WRITE16/32 do the inverse.
+ *
+ * Performance: Cortex-M7 ITCM byte accesses have 0-wait-state latency so the
+ * overhead vs. the old word/dword cast is negligible. */
+
+#define FETCH8RAM(A) \
+    (*(unsigned char *)(((A) & 0xFFFF) ^ 1u))
+
+#define FETCH16RAM(A) \
+    (  (unsigned int)(*(unsigned char *) ((A)       & 0xFFFF)) \
+     | ((unsigned int)(*(unsigned char *)(((A)+1u)  & 0xFFFF)) << 8))
+
+#define FETCH32RAM(A) \
+    (((unsigned int)FETCH16RAM(A) << 16) | (unsigned int)FETCH16RAM((A) + 2u))
+
+#define WRITE8RAM(A, V) \
+    ((*(unsigned char *)(((A) & 0xFFFF) ^ 1u)) = (unsigned char)(V))
+
+#define WRITE16RAM(A, V) do { \
+    *(unsigned char *) ((A)       & 0xFFFF) = (unsigned char)( (V)        & 0xFF); \
+    *(unsigned char *)(((A)+1u)   & 0xFFFF) = (unsigned char)(((V) >> 8)  & 0xFF); \
+} while (0)
+
+#define WRITE32RAM(A, V) do { \
+    WRITE16RAM((A),      ((unsigned int)(V) >> 16) & 0xFFFF); \
+    WRITE16RAM((A) + 2u, (unsigned int)(V)         & 0xFFFF); \
+} while (0)
+#endif
 #else
 
 #define FETCH8RAM(A) ((M68K_RAM[(A ^ 1) & 0xFFFF]))
@@ -187,36 +252,10 @@
 
 #endif
 
-#define m68k_read_immediate_16(A) ( ( (A) & 0x800000) ? FETCH16RAM((A)) : FETCH16ROM((A)) )
-#define m68k_read_immediate_32(A) ( ( (A) & 0x800000) ? FETCH32RAM((A)) : FETCH32ROM((A)) )
-
-#define m68k_read_pcrelative_8(A) ( FETCH8ROM((A)) )
-#define m68k_read_pcrelative_16(A) ( FETCH16ROM((A)) )
-#define m68k_read_pcrelative_32(A) ( FETCH32ROM((A)) )
-
-/* Read from anywhere */
-unsigned int  m68k_read_memory_8(unsigned int address);
-unsigned int  m68k_read_memory_16(unsigned int address);
-unsigned int  m68k_read_memory_32(unsigned int address);
-
-/* Read data immediately following the PC */
-// unsigned int  m68k_read_immediate_16(unsigned int address);
-// unsigned int  m68k_read_immediate_32(unsigned int address);
-
-/* Read data relative to the PC */
-//unsigned int  m68k_read_pcrelative_8(unsigned int address);
-//unsigned int  m68k_read_pcrelative_16(unsigned int address);
-//unsigned int  m68k_read_pcrelative_32(unsigned int address);
-
 /* Memory access for the disassembler */
 unsigned int m68k_read_disassembler_8  (unsigned int address);
 unsigned int m68k_read_disassembler_16 (unsigned int address);
 unsigned int m68k_read_disassembler_32 (unsigned int address);
-
-/* Write to anywhere */
-void m68k_write_memory_8(unsigned int address, unsigned int value);
-void m68k_write_memory_16(unsigned int address, unsigned int value);
-void m68k_write_memory_32(unsigned int address, unsigned int value);
 
 /*** BZHXX ***/
 /* ======================================================================== */
@@ -467,8 +506,8 @@ extern unsigned int m68k_get_reg(m68k_register_t reg);
 extern void m68k_set_reg(m68k_register_t reg, unsigned int value);
 
 /* Load/Save state of CPU */
-extern void gwenesis_m68k_save_state();
-extern void gwenesis_m68k_load_state();
+extern void gwenesis_m68k_save_state(FILE *file);
+extern void gwenesis_m68k_load_state(FILE *file, int ss_version);
 
 /* ======================================================================== */
 /* ============================== END OF FILE ============================= */

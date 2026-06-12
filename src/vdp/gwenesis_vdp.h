@@ -131,6 +131,7 @@ void gwenesis_vdp_write_memory_16(unsigned int address, unsigned int value);
 void gwenesis_vdp_set_buffers(unsigned char *screen_buffer, unsigned char *scaled_buffer);
 void gwenesis_vdp_set_buffer(unsigned short *ptr_screen_buffer);
 void gwenesis_vdp_render_line(int line);
+void gwenesis_vdp_latch_line_scroll(int line);
 
 void gwenesis_vdp_render_config();
 
@@ -145,9 +146,9 @@ int gwenesis_vdp_vcounter();
 int gwenesis_vdp_hcounter();
 unsigned short gwenesis_vdp_hvcounter();
 
-void gwenesis_vdp_gfx_save_state();
-void gwenesis_vdp_gfx_load_state();
-void gwenesis_vdp_mem_save_state();
-void gwenesis_vdp_mem_load_state();
+void gwenesis_vdp_gfx_save_state(FILE *file);
+void gwenesis_vdp_gfx_load_state(FILE *file, int ss_version);
+void gwenesis_vdp_mem_save_state(FILE *file);
+void gwenesis_vdp_mem_load_state(FILE *file, int ss_version);
 
 #endif

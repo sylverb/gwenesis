@@ -16,11 +16,10 @@ __contact__ = "https://github.com/bzhxx"
 __license__ = "GPLv3"
 
 */
-#include "build/config.h"
-#ifdef ENABLE_EMULATOR_MD
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 #include "m68k.h"
@@ -31,10 +30,12 @@ __license__ = "GPLv3"
 #include "gwenesis_sn76489.h"
 #include "gwenesis_savestate.h"
 
+#ifdef LINUX_EMU
 #include <assert.h>
+#endif
 
-#if GNW_TARGET_MARIO !=0 || GNW_TARGET_ZELDA!=0
-  #pragma GCC optimize("Ofast")
+#ifdef TARGET_GNW
+#pragma GCC optimize("Ofast")
 #endif
 
 #define VDP_MEM_DISABLE_LOGGING 1
@@ -63,8 +64,8 @@ void vdpm_log(const char *subs, const char *fmt, ...) {
 /* Setup VDP Memories */
 
 
-#if GNW_TARGET_MARIO != 0 | GNW_TARGET_ZELDA != 0
-  static uint8_t vram[1024*64];
+#ifdef TARGET_GNW
+  static uint8_t vram[1024*64] __attribute__((aligned(4)));
   unsigned char* VRAM = vram;
 #else
   unsigned char VRAM[VRAM_MAX_SIZE];
@@ -84,7 +85,7 @@ static unsigned short address_reg = 0;
 // Define VDP control pending and set initial state
 int command_word_pending = 0;
 // Define VDP status and set initial status value
-unsigned short gwenesis_vdp_status = 0x3C00;
+unsigned short gwenesis_vdp_status = 0x3C00 | STATUS_FIFO_EMPTY;
 
 extern int scan_line;
 
@@ -100,6 +101,10 @@ static int hvcounter_latched = 0;
 
 int hint_pending;
 
+extern int system_clock;
+extern unsigned int lines_per_frame;
+extern unsigned int screen_height;
+extern int frame_counter;
 
 // Define VIDEO MODE
 extern int mode_pal;
@@ -163,7 +168,9 @@ void gwenesis_vdp_reset() {
   code_reg = 0;
   hint_pending = 0;
   // _vcounter = 0;
-  gwenesis_vdp_status = 0x3C00;
+  gwenesis_vdp_status = 0x3C00 | STATUS_FIFO_EMPTY;
+  if (mode_pal)
+    gwenesis_vdp_status |= STATUS_PAL;
   // //line_counter_interrupt = 0;
   hvcounter_latched = 0;
 
@@ -181,27 +188,47 @@ void gwenesis_vdp_reset() {
 //static inline __attribute__((always_inline))
 int gwenesis_vdp_hcounter()
 {
-    int mclk = m68k_cycles_run() ;
+    int elapsed = m68k_cycles_master() - system_clock;
+    if (elapsed < 0)
+        elapsed = 0;
+    elapsed %= (int)VDP_CYCLES_PER_LINE;
     int pixclk;
 
     // Accurate 9-bit hcounter emulation, from timing posted here:
     // http://gendev.spritesmind.net/forum/viewtopic.php?p=17683#17683
     if (REG12_MODE_H40)
     {
-        pixclk = mclk * 420 / VDP_CYCLES_PER_LINE;
+        pixclk = elapsed * 420 / (int)VDP_CYCLES_PER_LINE;
         pixclk += 0xD;
         if (pixclk >= 0x16D)
             pixclk += 0x1C9 - 0x16D;
     }
     else
     {
-        pixclk = mclk * 342 / VDP_CYCLES_PER_LINE;
+        pixclk = elapsed * 342 / (int)VDP_CYCLES_PER_LINE;
         pixclk += 0xB;
         if (pixclk >= 0x128)
             pixclk += 0x1D2 - 0x128;
     }
 
     return pixclk & 0x1FF;
+}
+
+static int vdp_vc_from_phy_line(int phy_line)
+{
+  int vc = phy_line;
+  int version_pal = mode_pal;
+
+  if (version_pal && mode_pal && (vc >= 267))
+    vc = phy_line - 58;
+  else if (version_pal && (mode_pal == 0) && (vc >= 259))
+    vc = phy_line - 42;
+  else if ((version_pal == 0) && (vc >= 235))
+        vc = phy_line - 6;
+#ifdef LINUX_EMU
+  assert(vc < 0x200);
+#endif
+  return vc;
 }
 
 /******************************************************************************
@@ -213,29 +240,15 @@ int gwenesis_vdp_hcounter()
 //static inline __attribute__((always_inline))
 int gwenesis_vdp_vcounter()
 {
+    /* GPGX-style VC: anchored to scan_line, advanced when elapsed cycles reach
+     * the next line (for HV-counter port reads during m68k_run). */
+    int elapsed = m68k_cycles_master() - system_clock;
+    if (elapsed < 0)
+        elapsed = 0;
+    int delta = elapsed / (int)VDP_CYCLES_PER_LINE;
+    int phy_line = ((int)scan_line + delta) % (int)lines_per_frame;
 
-    int vc = scan_line;
-    int VERSION_PAL = gwenesis_vdp_status & 1;
-
-    /*
-    if (VERSION_PAL && mode_pal && (vc >= 0x10B))
-        vc += 0x1D2 - 0x10B;
-    else if (VERSION_PAL && (mode_pal==0) && (vc >= 0x103))
-        vc += 0x1CA - 0x103;
-    else if ((VERSION_PAL ==0 ) && (vc >= 0xEB))
-        vc += 0x1E5 - 0xEB;
-    assert(vc < 0x200);
-    */
-    if (VERSION_PAL && mode_pal && (vc >= 267))
-        vc = scan_line - 58; 
-    else if (VERSION_PAL && (mode_pal==0) && (vc >= 259))
-        vc = scan_line  - 42;
-    else if ((VERSION_PAL == 0 ) && (vc >= 235))
-        vc = scan_line -6;
-    assert(vc < 0x200);
-
-   // printf("VERSION_PAL:%d , mode_pal:%d,line:%d,vc:%d\n",VERSION_PAL,mode_pal,scan_line,vc);
-    return vc;
+    return vdp_vc_from_phy_line(phy_line);
 }
 /******************************************************************************
  *
@@ -252,8 +265,10 @@ unsigned short gwenesis_vdp_hvcounter()
 
     int hc = gwenesis_vdp_hcounter();
     int vc = gwenesis_vdp_vcounter();
+#ifdef LINUX_EMU
     assert(vc < 512);
     assert(hc < 512);
+#endif
 
     return ((vc & 0xFF) << 8) | (hc >> 1);
 
@@ -262,18 +277,20 @@ unsigned short gwenesis_vdp_hvcounter()
 //static inline __attribute__((always_inline))
 bool vblank(void)
 {
-    int vc = gwenesis_vdp_vcounter();
- //  printf("vc=%d,REG1_DISP_ENABLED=%d,VBLAN?%d\n",vc,REG1_DISP_ENABLED,
-  // mode_pal?((vc >= 0xF0) && (vc < 0x1FF)):((vc >= 0xE0) && (vc < 0x1FF)));
+    /* Status-register VBLANK uses the frame loop scan_line (not cycle-ahead VC).
+     * Cycle-ahead VC would set VBLANK one line early on the last active line and
+     * breaks Psygnosis raster engines (Shadow of the Beast II, Formula One). */
+    int vc = vdp_vc_from_phy_line((int)scan_line);
 
-    if (REG1_DISP_ENABLED ==0)
+    /* GPGX: VBLANK flag forced when display is blanked (reg1 bit 6 clear). */
+    if (REG1_DISP_ENABLED == 0)
         return true;
 
-    if (mode_pal)
+    /* V28 (224 lines): VBLANK at VC 0xE0; V30 (240 lines): at 0xF0 (REG1 M2). */
+    if (REG1_PAL)
         return ((vc >= 0xF0) && (vc < 0x1FF));
     else
         return ((vc >= 0xE0) && (vc < 0x1FF));
-        
 }
 
 /******************************************************************************
@@ -282,6 +299,47 @@ bool vblank(void)
  *   Write an value to specified register
  *
  ******************************************************************************/
+static inline unsigned int vdp_dma_blank_stall_cycles(unsigned int dma_len_words)
+{
+  /* Genesis Plus GX dma_timing[]: blank / display-off = 166 (H32) or 204 (H40)
+   * bytes per scanline for 68K→VDP.  VRAM transfers count length in words
+   * (2 bytes); CRAM/VSRAM length is already in words with adjusted slot count. */
+  unsigned int bytes_per_line = REG12_MODE_H40 ? 204u : 166u;
+  int dest = code_reg & 0x0F;
+
+  if (dest == 0 || dest == 4) {
+    bytes_per_line = REG12_MODE_H40 ? 198u : 161u;
+    return dma_len_words * (unsigned int)VDP_CYCLES_PER_LINE / bytes_per_line;
+  }
+  return dma_len_words * 2u * (unsigned int)VDP_CYCLES_PER_LINE / bytes_per_line;
+}
+
+static inline unsigned int vdp_dma_stall_cap(unsigned int stall)
+{
+  if (stall == 0)
+    return 0;
+
+  unsigned int frame_end =
+      (unsigned int)lines_per_frame * (unsigned int)VDP_CYCLES_PER_LINE;
+  unsigned int cpu_pos = (unsigned int)m68k_cycles_master();
+
+  if (cpu_pos >= frame_end)
+    return 0;
+  {
+    unsigned int max_stall = frame_end - cpu_pos;
+    if (stall > max_stall)
+      return max_stall;
+  }
+  return stall;
+}
+
+static inline void vdp_dma_apply_stall(unsigned int stall)
+{
+  stall = vdp_dma_stall_cap(stall);
+  if (stall > 0)
+    m68k.cycles += (int)stall;
+}
+
 static inline __attribute__((always_inline)) void gwenesis_vdp_register_w(int reg, unsigned char value)
 {
     // Mode4 is not emulated yet. Anyway, access to registers > 0xA is blocked.
@@ -295,7 +353,6 @@ static inline __attribute__((always_inline)) void gwenesis_vdp_register_w(int re
     // Writing a register clear the first command word
     // (see sonic3d intro wrong colors, and vdpfifotesting)
     code_reg &= ~0x3;
-    address_reg &= ~0x3FFF;
 
     switch (reg)
     {
@@ -359,7 +416,9 @@ unsigned short status_register_r(void)
     // TODO: FIFO not emulated
     status |= STATUS_FIFO_EMPTY;
 
-    // VBLANK bit
+    /* Recompute VBLANK from beam position; do not inherit stale bit from
+     * gwenesis_vdp_status (frame loop sets it during vblank only). */
+    status &= (unsigned short)~STATUS_VBLANK;
     if (vblank())
         status |= STATUS_VBLANK;
 
@@ -379,6 +438,9 @@ unsigned short status_register_r(void)
         status |= STATUS_SPRITEOVERFLOW;
     if (sprite_collision)
         status |= STATUS_SPRITECOLLISION;
+
+    /* Hardware clears sprite collision flag on status read. */
+    sprite_collision = false;
 
     if (mode_pal)
        status |= STATUS_PAL;
@@ -457,6 +519,7 @@ void gwenesis_vdp_dma_fill(unsigned short value)
       CRAM565[0xC0 + ((address_reg & 0x7f) >> 1)] = pixel;
 
       address_reg += REG15_DMA_INCREMENT;
+      address_reg &= 0x7F;
       src_addr_low++;
     } while (--dma_length);
     break;
@@ -464,6 +527,7 @@ void gwenesis_vdp_dma_fill(unsigned short value)
     do {
       VSRAM[(address_reg & 0x7f) >> 1] = fifo[3] & 0x03FF;
       address_reg += REG15_DMA_INCREMENT;
+      address_reg &= 0x7F;
       src_addr_low++;
     } while (--dma_length);
     break;
@@ -515,8 +579,14 @@ void gwenesis_vdp_dma_m68k()
 
     /* Source is : 
         68K_RAM if dma_source_high == 0x00FF : FETCH16RAM(dma_source_low << 1)
-        68K_ROM otherwise                    : FETCH16ROM((dma_source_high | dma_source_low) << 1))
+        68K_ROM otherwise                    : memory_map read16 on src_addr
     */
+
+/* Read a 16-bit word from the M68K address space for DMA purposes.
+ * Uses the memory_map table so SSF2/mirror/QuackShot base pointers are honoured
+ * without any conditional branches. */
+#define DMA_READ16(addr) \
+    *(uint16 *)(m68k.memory_map[((addr) >> 16) & 0xFF].base + ((addr) & 0xFFFF))
 
     /* Source is 68K RAM */
     if ( src_addr & 0x800000) {
@@ -557,6 +627,7 @@ void gwenesis_vdp_dma_m68k()
           CRAM565[0xC0 + ((address_reg & 0x7f) >> 1)] = pixel;
 
           address_reg += REG15_DMA_INCREMENT;
+          address_reg &= 0x7F;
           src_addr += 2;
         } while (--dma_length);
         break;
@@ -568,6 +639,7 @@ void gwenesis_vdp_dma_m68k()
           push_fifo(value);
           VSRAM[(address_reg & 0x7f) >> 1] = value & 0x03FF;
           address_reg += REG15_DMA_INCREMENT;
+          address_reg &= 0x7F;
           src_addr += 2;
         } while (--dma_length);
         break;
@@ -585,7 +657,7 @@ void gwenesis_vdp_dma_m68k()
       case 0x1: // dest is VRAM
 
         do {
-          value = FETCH16ROM(src_addr);
+          value = DMA_READ16(src_addr);
           push_fifo(value);
           gwenesis_vdp_vram_write((address_reg)&0xFFFF, value >> 8);
           gwenesis_vdp_vram_write((address_reg ^ 1) & 0xFFFF, value & 0xFF);
@@ -597,7 +669,7 @@ void gwenesis_vdp_dma_m68k()
       case 0x3: // dest is CRAM
 
         do {
-          value = FETCH16ROM(src_addr);
+          value = DMA_READ16(src_addr);
           push_fifo(value);
           CRAM[(address_reg & 0x7f) >> 1] = value;
 
@@ -621,6 +693,7 @@ void gwenesis_vdp_dma_m68k()
           CRAM565[0xC0 + ((address_reg & 0x7f) >> 1)] = pixel;
 
           address_reg += REG15_DMA_INCREMENT;
+          address_reg &= 0x7F;
           src_addr += 2;
         } while (--dma_length);
         break;
@@ -628,10 +701,11 @@ void gwenesis_vdp_dma_m68k()
       case 0x5: // dest is VSRAM
 
         do {
-          value = FETCH16ROM(src_addr);
+          value = DMA_READ16(src_addr);
           push_fifo(value);
           VSRAM[(address_reg & 0x7f) >> 1] = value & 0x03FF;
           address_reg += REG15_DMA_INCREMENT;
+          address_reg &= 0x7F;
           src_addr += 2;
         } while (--dma_length);
         break;
@@ -667,7 +741,7 @@ void gwenesis_vdp_dma_copy()
     do
     {
         unsigned short value = VRAM[src_addr_low ^ 1];
-        gwenesis_vdp_vram_write((address_reg ^ 1) & 0xFFFF, value);
+        gwenesis_vdp_vram_write(address_reg ^ 1, value);
 
         address_reg += REG15_DMA_INCREMENT;
         src_addr_low++;
@@ -781,10 +855,58 @@ void gwenesis_vdp_control_port_write(unsigned int value)
       // gwenesis_vdp_status |= 0x2;
       switch (REG23_DMA_TYPE) {
       case 0:
-      case 1:
+      case 1: {
+        int dma_len = REG19_DMA_LENGTH;
+        if (dma_len == 0) dma_len = 0x10000;
 
         gwenesis_vdp_dma_m68k();
+
+        /* Bus stall: M68K is halted during DMA.
+         *
+         * Three cases:
+         *  - Display OFF (any line): all VDP slots free → fast rate (~167/line).
+         *    Needed so that display-toggle raster effects (e.g. Formula One) let
+         *    the CPU re-enable display at the right scan line.
+         *  - Active display + display ON: only ~16 slots/line available → slow
+         *    rate.  Needed to correctly time per-line scroll DMA (e.g. European
+         *    Club Soccer).
+         *  - VBlank + display ON: no stall.  Hardware-accurate but games are
+         *    already designed around this and adding a stall here costs VBlank
+         *    CPU time unnecessarily, causing slowdowns in games like Earthion.
+         */
+        {
+          unsigned int stall = 0;
+          if (!REG1_DISP_ENABLED) {
+            /* Display blanked: all VRAM slots available (GPGX blank row). */
+            stall = vdp_dma_blank_stall_cycles((unsigned int)dma_len);
+          } else if (scan_line < (int)screen_height) {
+            /* Active display + display ON: ~16 VRAM slots/line.
+             * A large DMA may overflow past the end of active display and
+             * continue into VBlank (167 slots/line there).  Compute the stall
+             * piecewise so that the carry-over into the next frame stays small
+             * (otherwise the inter-frame normalization "m68k.cycles -= system_clock"
+             * leaves the CPU stalled for the first N lines of the next frame,
+             * which breaks HINT-based raster effects in games like Landstalker). */
+            int active_lines_left = (int)screen_height - scan_line;
+            int words_in_active   = active_lines_left * 16;
+            if (dma_len <= words_in_active) {
+              /* Entire DMA fits within remaining active display. */
+              stall = (unsigned int)dma_len * (unsigned int)(VDP_CYCLES_PER_LINE / 16);
+            } else {
+              /* DMA spills into VBlank: active portion consumes all remaining
+               * active-display lines, remainder goes at the fast VBlank rate. */
+              unsigned int active_stall  = (unsigned int)active_lines_left * VDP_CYCLES_PER_LINE;
+              unsigned int vblank_words  = (unsigned int)(dma_len - words_in_active);
+              unsigned int vblank_bytes_per_line = REG12_MODE_H40 ? 204u : 166u;
+              unsigned int vblank_stall  =
+                  vblank_words * 2u * (unsigned int)VDP_CYCLES_PER_LINE / vblank_bytes_per_line;
+              stall = active_stall + vblank_stall;
+            }
+          }
+          vdp_dma_apply_stall(stall);
+        }
         break;
+      }
 
       case 2:
 
@@ -834,6 +956,7 @@ void gwenesis_vdp_write_data_port_16(unsigned int value)
         switch (code_reg & 0xF)
         {
         case 0x1: /* VRAM write */
+        case 0x9:
             //vdpm_log(__FUNCTION__,"VRAM write : addr:%x increment:%d value:%04x",
              // address_reg, REG15_DMA_INCREMENT, value);
             gwenesis_vdp_vram_write(address_reg& 0xFFFF, (value >> 8) & 0xFF);
@@ -843,6 +966,7 @@ void gwenesis_vdp_write_data_port_16(unsigned int value)
 
             break;
         case 0x3: /* CRAM write */
+        case 0x7:
             //vdpm_log(__FUNCTION__,"CRAM write : addr:%x increment:%d value:%04x",
              // address_reg, REG15_DMA_INCREMENT, value);
             CRAM[(address_reg & 0x7f) >> 1] = value;
@@ -864,7 +988,7 @@ void gwenesis_vdp_write_data_port_16(unsigned int value)
             CRAM565[0xC0 + ((address_reg & 0x7f) >> 1)] = pixel;
 
             address_reg += REG15_DMA_INCREMENT;
-            address_reg &= 0xFFFF;
+            address_reg &= 0x7F;
 
             break;
         case 0x5: /* VSRAM write */
@@ -873,17 +997,15 @@ void gwenesis_vdp_write_data_port_16(unsigned int value)
            // printf("write dataport 16: VSRAM@%04x:%04x\n",address_reg,value);
             VSRAM[(address_reg & 0x7f) >> 1] = value & 0X03FF;
             address_reg += REG15_DMA_INCREMENT;
-            address_reg &= 0xFFFF;
+            address_reg &= 0x7F;
             break;
         case 0x0:
         case 0x4:
         case 0x8: // Write operation after setting up
                   // Makes Compatible with Alladin and Ecco 2
             break;
-        case 0x9: // VDP FIFO TEST
-            break;
         default:
-            printf("VDP Data Port invalid");
+            printf("VDP Data Port invalid: %x\n", code_reg & 0xF);
         }
 
     /* if a DMA is scheduled, do it */
@@ -943,7 +1065,7 @@ unsigned int gwenesis_vdp_read_memory_16(unsigned int address)
       return gwenesis_vdp_read_data_port_16();
     else if (address < 0x8)
       return status_register_r();
-    else if (address < 0xf)
+    else if (address < 0x10) /* 0x08-0x0F : HV counter mirrors */
       return gwenesis_vdp_hvcounter();
     else 
       return 0xff;
@@ -970,7 +1092,6 @@ void gwenesis_vdp_write_memory_8(unsigned int address, unsigned int value)
  *
  ******************************************************************************/
  //static inline
- extern int system_clock;
 void gwenesis_vdp_write_memory_16(unsigned int address, unsigned int value) {
   address = address & 0x1F;
 
@@ -993,44 +1114,46 @@ void gwenesis_vdp_write_memory_16(unsigned int address, unsigned int value) {
 
 }
 
-void gwenesis_vdp_mem_save_state() {
-  SaveState* state;
-  state = saveGwenesisStateOpenForWrite("vdp_mem");
+void gwenesis_vdp_mem_save_state(FILE *file) {
+  fwrite((unsigned char *)VRAM, VRAM_MAX_SIZE, 1, file);
+  fwrite((unsigned char *)CRAM, sizeof(CRAM), 1, file);
+  fwrite((unsigned char *)SAT_CACHE, sizeof(SAT_CACHE), 1, file);
+  fwrite((unsigned char *)gwenesis_vdp_regs, sizeof(gwenesis_vdp_regs), 1, file);
+  fwrite((unsigned char *)fifo, sizeof(fifo), 1, file);
+  fwrite((unsigned char *)CRAM565, sizeof(CRAM565), 1, file);
+  fwrite((unsigned char *)VSRAM, sizeof(VSRAM), 1, file);
 
-  saveGwenesisStateSetBuffer(state, "VRAM", VRAM, VRAM_MAX_SIZE);
-  saveGwenesisStateSetBuffer(state, "CRAM", CRAM, sizeof(CRAM));
-  saveGwenesisStateSetBuffer(state, "SAT_CACHE", SAT_CACHE, sizeof(SAT_CACHE));
-  saveGwenesisStateSetBuffer(state, "gwenesis_vdp_regs", gwenesis_vdp_regs, sizeof(gwenesis_vdp_regs));
-  saveGwenesisStateSetBuffer(state, "fifo", fifo, sizeof(fifo));
-  saveGwenesisStateSetBuffer(state, "CRAM565", CRAM565, sizeof(CRAM565));
-  saveGwenesisStateSetBuffer(state, "VSRAM", VSRAM, sizeof(VSRAM));
-  saveGwenesisStateSet(state, "code_reg", code_reg);
-  saveGwenesisStateSet(state, "address_reg", address_reg);
-  saveGwenesisStateSet(state, "command_word_pending", command_word_pending);
-  saveGwenesisStateSet(state, "gwenesis_vdp_status", gwenesis_vdp_status);
-  saveGwenesisStateSet(state, "dma_fill_pending", dma_fill_pending);
-  saveGwenesisStateSet(state, "hvcounter_latch", hvcounter_latch);
-  saveGwenesisStateSet(state, "hvcounter_latched", hvcounter_latched);
-  saveGwenesisStateSet(state, "hint_pending", hint_pending);
+  fwrite((unsigned char *)&code_reg, 4, 1, file);
+  fwrite((unsigned char *)&address_reg, 4, 1, file);
+  fwrite((unsigned char *)&command_word_pending, 4, 1, file);
+  fwrite((unsigned char *)&gwenesis_vdp_status, sizeof(gwenesis_vdp_status), 1, file);
+  fwrite((unsigned char *)&dma_fill_pending, 4, 1, file);
+  fwrite((unsigned char *)&hvcounter_latch, 4, 1, file);
+  fwrite((unsigned char *)&hvcounter_latched, 4, 1, file);
+  fwrite((unsigned char *)&hint_pending, 4, 1, file);
 }
 
-void gwenesis_vdp_mem_load_state() {
-  SaveState* state = saveGwenesisStateOpenForRead("vdp_mem");
+void gwenesis_vdp_mem_load_state(FILE *file, int ss_version) {
+  uint16_t dummy;
+  fread((unsigned char *)VRAM, VRAM_MAX_SIZE, 1, file);
+  fread((unsigned char *)CRAM, sizeof(CRAM), 1, file);
+  fread((unsigned char *)SAT_CACHE, sizeof(SAT_CACHE), 1, file);
+  fread((unsigned char *)gwenesis_vdp_regs, sizeof(gwenesis_vdp_regs), 1, file);
+  fread((unsigned char *)fifo, sizeof(fifo), 1, file);
+  fread((unsigned char *)CRAM565, sizeof(CRAM565), 1, file);
+  fread((unsigned char *)VSRAM, sizeof(VSRAM), 1, file);
 
-  saveGwenesisStateGetBuffer(state, "VRAM", VRAM, VRAM_MAX_SIZE);
-  saveGwenesisStateGetBuffer(state, "CRAM", CRAM, sizeof(CRAM));
-  saveGwenesisStateGetBuffer(state, "SAT_CACHE", SAT_CACHE, sizeof(SAT_CACHE));
-  saveGwenesisStateGetBuffer(state, "gwenesis_vdp_regs", gwenesis_vdp_regs, sizeof(gwenesis_vdp_regs));
-  saveGwenesisStateGetBuffer(state, "fifo", fifo, sizeof(fifo));
-  saveGwenesisStateGetBuffer(state, "CRAM565", CRAM565, sizeof(CRAM565));
-  saveGwenesisStateGetBuffer(state, "VSRAM", VSRAM, sizeof(VSRAM));
-  code_reg = saveGwenesisStateGet(state, "code_reg");
-  address_reg = saveGwenesisStateGet(state, "address_reg");
-  command_word_pending = saveGwenesisStateGet(state, "command_word_pending");
-  gwenesis_vdp_status = saveGwenesisStateGet(state, "gwenesis_vdp_status");
-  dma_fill_pending = saveGwenesisStateGet(state, "dma_fill_pending");
-  hvcounter_latch = saveGwenesisStateGet(state, "hvcounter_latch");
-  hvcounter_latched = saveGwenesisStateGet(state, "hvcounter_latched");
-  hint_pending = saveGwenesisStateGet(state, "hint_pending");
+  fread((unsigned char *)&code_reg, 4, 1, file);
+  fread((unsigned char *)&address_reg, 4, 1, file);
+  fread((unsigned char *)&command_word_pending, 4, 1, file);
+  if (ss_version == 0) {
+    fread((unsigned char *)&gwenesis_vdp_status, 2, 1, file);
+    fread((unsigned char *)&dummy, 2, 1, file); // For compatibility with old savestates
+  } else {
+    fread((unsigned char *)&gwenesis_vdp_status, sizeof(gwenesis_vdp_status), 1, file);
+  }
+  fread((unsigned char *)&dma_fill_pending, 4, 1, file);
+  fread((unsigned char *)&hvcounter_latch, 4, 1, file);
+  fread((unsigned char *)&hvcounter_latched, 4, 1, file);
+  fread((unsigned char *)&hint_pending, 4, 1, file);
 }
-#endif

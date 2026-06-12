@@ -19,16 +19,19 @@ __license__ = "GPLv3"
 #ifndef _Z80_INTERFACE_H_
 #define _Z80_INTERFACE_H_
 
+
 void z80_write_ctrl(unsigned int address, unsigned int value);
 unsigned int z80_read_ctrl(unsigned int address);
+unsigned int z80_read_busack_word(void);
+void z80_bank_register_write(unsigned int value); /* write one bit to the Z80 bank shift register */
 void z80_start();
 void z80_pulse_reset();
 void z80_execute(unsigned int target);
 void z80_run(int target);
 extern int zclk;
 
-void gwenesis_z80inst_save_state();
-void gwenesis_z80inst_load_state();
+void gwenesis_z80inst_save_state(FILE *file);
+void gwenesis_z80inst_load_state(FILE *file, int ss_version);
 
 void z80_set_memory(unsigned char *buffer);
 
@@ -37,8 +40,5 @@ void z80_write_memory_16(unsigned int address, unsigned int value);
 unsigned int z80_read_memory_16(unsigned int address);
 unsigned int z80_read_memory_8(unsigned int address);
 void z80_irq_line(unsigned int value);
-
-void gwenesis_z80inst_save_state();
-void gwenesis_z80inst_load_state();
 
 #endif

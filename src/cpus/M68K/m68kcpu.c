@@ -1,6 +1,3 @@
-#include "build/config.h"
-#ifdef ENABLE_EMULATOR_MD
-
 /* ======================================================================== */
 /*                            MAIN 68K CORE                                 */
 /* ======================================================================== */
@@ -25,7 +22,7 @@ extern int vdp_68k_irq_ack(int int_level);
 #include "m68kconf.h"
 #include "m68kcpu.h"
 #include "m68kops.h"
-#include "gwenesis_savestate.h"
+//#include "gwenesis_savestate.h"
 
 /* ======================================================================== */
 /* ================================= DATA ================================= */
@@ -418,43 +415,46 @@ void m68k_clear_halt(void)
   CPU_STOPPED &= ~STOP_LEVEL_HALT;
 }
 
-void gwenesis_m68k_save_state() {
-  SaveState *state;
-  state = saveGwenesisStateOpenForWrite("m68k");
-  
-  saveGwenesisStateSetBuffer(state, "REG_D", REG_D, sizeof(REG_D));
-  saveGwenesisStateSet(state, "SR", m68ki_get_sr());
-  saveGwenesisStateSet(state, "REG_PC", REG_PC);
-  saveGwenesisStateSet(state, "REG_SP", REG_SP);
-  saveGwenesisStateSet(state, "REG_USP", REG_USP);
-  saveGwenesisStateSet(state, "REG_ISP", REG_ISP);
-  saveGwenesisStateSet(state, "REG_IR", REG_IR);
+void gwenesis_m68k_save_state(FILE *file) {
+  fwrite((unsigned char *)REG_D, sizeof(REG_D), 1, file);
+  {
+    unsigned int sr = m68ki_get_sr();
+    fwrite((unsigned char *)&sr, 4, 1, file);
+  }
 
-  saveGwenesisStateSet(state, "m68k_cycle_end", m68k.cycle_end);
-  saveGwenesisStateSet(state, "m68k_cycles", m68k.cycles);
-  saveGwenesisStateSet(state, "m68k_int_level", m68k.int_level);
-  saveGwenesisStateSet(state, "m68k_stopped", m68k.stopped);
+  fwrite((unsigned char *)&REG_PC, 4, 1, file);
+  fwrite((unsigned char *)&REG_SP, 4, 1, file);
+  fwrite((unsigned char *)&REG_USP, 4, 1, file);
+  fwrite((unsigned char *)&REG_ISP, 4, 1, file);
+  fwrite((unsigned char *)&REG_IR, 4, 1, file);
+
+  fwrite((unsigned char *)&m68k.cycle_end, 4, 1, file);
+  fwrite((unsigned char *)&m68k.cycles, 4, 1, file);
+  fwrite((unsigned char *)&m68k.int_level, 4, 1, file);
+  fwrite((unsigned char *)&m68k.stopped, 4, 1, file);
 }
 
-void gwenesis_m68k_load_state() {
-  SaveState *state = saveGwenesisStateOpenForRead("m68k");
-  saveGwenesisStateGetBuffer(state, "REG_D", REG_D, sizeof(REG_D));
+void gwenesis_m68k_load_state(FILE *file, int ss_version) {
+  (void)ss_version;
+  fread((unsigned char *)REG_D, sizeof(REG_D), 1, file);
+  {
+    unsigned int sr;
+    fread((unsigned char *)&sr, 4, 1, file);
+    m68ki_set_sr(sr);
+  }
 
-  m68ki_set_sr(saveGwenesisStateGet(state, "SR"));
-  REG_PC = saveGwenesisStateGet(state, "REG_PC");
-  REG_SP = saveGwenesisStateGet(state, "REG_SP");
-  REG_USP = saveGwenesisStateGet(state, "REG_USP");
-  REG_ISP = saveGwenesisStateGet(state, "REG_ISP");
-  REG_IR = saveGwenesisStateGet(state, "REG_IR");
+  fread((unsigned char *)&REG_PC, 4, 1, file);
+  fread((unsigned char *)&REG_SP, 4, 1, file);
+  fread((unsigned char *)&REG_USP, 4, 1, file);
+  fread((unsigned char *)&REG_ISP, 4, 1, file);
+  fread((unsigned char *)&REG_IR, 4, 1, file);
 
-  m68k.cycle_end = saveGwenesisStateGet(state, "m68k_cycle_end");
-  m68k.cycles = saveGwenesisStateGet(state, "m68k_cycles");
-  m68k.int_level = saveGwenesisStateGet(state, "m68k_int_level");
-  m68k.stopped = saveGwenesisStateGet(state, "m68k_stopped");
-
+  fread((unsigned char *)&m68k.cycle_end, 4, 1, file);
+  fread((unsigned char *)&m68k.cycles, 4, 1, file);
+  fread((unsigned char *)&m68k.int_level, 4, 1, file);
+  fread((unsigned char *)&m68k.stopped, 4, 1, file);
 }
 
 /* ======================================================================== */
 /* ============================== END OF FILE ============================= */
 /* ======================================================================== */
-#endif

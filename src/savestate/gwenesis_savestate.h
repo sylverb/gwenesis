@@ -25,21 +25,23 @@ __license__ = "GPLv3"
 #include <string.h>
 #include <stdbool.h>
 
-typedef struct SaveState SaveState;
+/** File header size (bytes) written before `gwenesis_save_state` payload. */
+#define GWENESIS_SAVESTATE_HEADER_SIZE 8
 
-bool initLoadGwenesisState(unsigned char *srcBuffer);
-int saveGwenesisState(unsigned char *destBuffer, int save_size);
-int loadGwenesisState(unsigned char *srcBuffer);
+/** On-disk header: prefix `Gene` (4 bytes) + 4 decimal digits (0000–9999), 8 bytes total, no NUL. */
+#define GWENESIS_SAVESTATE_HEADER_PREFIX "Gene"
+#define GWENESIS_SAVESTATE_HEADER_PREFIX_LEN 4
 
-SaveState* saveGwenesisStateOpenForRead(const char* fileName);
-SaveState* saveGwenesisStateOpenForWrite(const char* fileName);
+/** Value encoded in the last 4 digits of the header (e.g. 1 → `Gene0001`). */
+#define GWENESIS_SAVESTATE_CURRENT_VERSION 2
 
-int saveGwenesisStateGet(SaveState* state, const char* tagName);
-void saveGwenesisStateSet(SaveState* state, const char* tagName, int value);
+/** Parse layout version from the first `GWENESIS_SAVESTATE_HEADER_SIZE` bytes; 0 = unknown or `Gene0000`. */
+int gwenesis_savestate_version_from_header(const unsigned char header[GWENESIS_SAVESTATE_HEADER_SIZE]);
 
-void saveGwenesisStateGetBuffer(SaveState* state, const char* tagName, void* buffer, int length);
-void saveGwenesisStateSetBuffer(SaveState* state, const char* tagName, void* buffer, int length);
+/** Write the 8-byte header: `Gene` + zero-padded 4-digit `GWENESIS_SAVESTATE_CURRENT_VERSION`. */
+void gwenesis_savestate_write_file_header(FILE *file);
 
-void gwenesis_save_state();
-void gwenesis_load_state();
+void gwenesis_save_state(FILE *file);
+/** @param ss_version from `gwenesis_savestate_version_from_header` (0 = rewind file to start before load). */
+void gwenesis_load_state(FILE *file, int ss_version);
 #endif

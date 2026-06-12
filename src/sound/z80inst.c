@@ -16,8 +16,6 @@ __contact__ = "https://github.com/bzhxx"
 __license__ = "GPLv3"
 
 */
-#include "build/config.h"
-#ifdef ENABLE_EMULATOR_MD
 
 #include <stdio.h>
 #include <stdint.h>
@@ -30,17 +28,19 @@ __license__ = "GPLv3"
 #include "gwenesis_sn76489.h"
 #include "gwenesis_savestate.h"
 
-#if GNW_TARGET_MARIO !=0 || GNW_TARGET_ZELDA!=0
+#ifdef TARGET_GNW
   #pragma GCC optimize("Ofast")
 #endif
 
 static int bus_ack = 0;
 static int reset = 0;
-static int reset_once = 0;
 int zclk = 0;
 static int initialized = 0;
 
-unsigned char *Z80_RAM;
+/* Z80 core FAST_RDOP expects 8 pages of 0x2000 bytes. */
+unsigned char *Z80_RAM[8];
+static uint8_t z80_dummy[0x2000];
+static unsigned char *Z80_RAM_BASE;
 
 static Z80 cpu;
 
@@ -78,12 +78,13 @@ void z80_start() {
     cpu.Trap = 0x0009;
     ResetZ80(&cpu);
     reset=1;
-    reset_once=0;
     bus_ack=0;
     zclk=0;
+    memset(z80_dummy, 0xFF, sizeof(z80_dummy));
 }
 
 void z80_pulse_reset() {
+  Z80_BANK = 0;
   ResetZ80(&cpu);
 }
 static int current_timeslice = 0;
@@ -93,16 +94,16 @@ void z80_run(int target) {
   // we are in advance,nothind to do
 current_timeslice = 0;
   if (zclk >= target) {
- // z80_log("z80_skip time","%1d%1d%1d||zclk=%d,tgt=%d",reset_once,bus_ack,reset, zclk, target);
+ // z80_log("z80_skip time","%1d%1d||zclk=%d,tgt=%d",bus_ack,reset, zclk, target);
     return;
   }
 
   current_timeslice = target - zclk;
 
   int rem = 0;
-  if ((reset_once == 1) && (bus_ack == 0) && (reset == 0)) {
+  if ((bus_ack == 0) && (reset == 0)) {
 
-   // z80_log("z80_run", "%1d%1d%1d||zclk=%d,tgt=%d",reset_once, bus_ack, reset, zclk, target);
+   // z80_log("z80_run", "%1d%1d||zclk=%d,tgt=%d", bus_ack, reset, zclk, target);
     rem = ExecZ80(&cpu, current_timeslice / Z80_FREQ_DIVISOR);
 
   }
@@ -121,7 +122,18 @@ void z80_sync(void) {
 
 void z80_set_memory(unsigned char *buffer)
 {
-    Z80_RAM = buffer;
+    Z80_RAM_BASE = buffer;
+
+    // 0x0000–0x1FFF → RAM
+    Z80_RAM[0] = buffer;
+
+    // 0x2000–0x3FFF → mirror RAM
+    Z80_RAM[1] = buffer;
+    
+    // 0x4000–0xFFFF → NOT RAM → dummy (handled by RdZ80/WrZ80)
+    for (int i = 2; i < 8; i++) {
+      Z80_RAM[i] = z80_dummy;
+    }
     initialized = 1;
 }
 
@@ -133,7 +145,7 @@ void z80_write_ctrl(unsigned int address, unsigned int value) {
     z80_log(__FUNCTION__,"BUSREQ = %d, current=%d", value,bus_ack);
 
     // Bus request. Z80 bus on hold.
-    if (value) {
+    if (value & 1) {
       bus_ack = 1;
 
 
@@ -145,16 +157,29 @@ void z80_write_ctrl(unsigned int address, unsigned int value) {
   } else if (address == 0x1200) // RESET
   {
     z80_log(__FUNCTION__,"RESET = %d, current=%d", value,reset);
-  
-    if (value == 0) {
+
+    if (!(value & 1)) {
       reset = 1;
     } else {
-
-      z80_pulse_reset();
+      /* Real hardware: reset pulse occurs on 0->1 transition only. */
+      if (reset) {
+        z80_pulse_reset();
+      }
       reset = 0;
-      reset_once = 1;
     }
   }
+}
+
+unsigned int z80_read_busack_word(void)
+{
+  z80_sync();
+
+  unsigned int pc = m68k_get_reg(M68K_REG_PC);
+  unsigned int data = m68k_read_disassembler_16(pc);
+
+  if (bus_ack == 1 && reset == 0)
+    return data & 0xFEFFu;
+  return data | 0x0100u;
 }
 
 unsigned int z80_read_ctrl(unsigned int address) {
@@ -162,9 +187,18 @@ unsigned int z80_read_ctrl(unsigned int address) {
   z80_sync();
 
   if (address == 0x1100) {
+    /* GPGX-style BUSACK: merge open-bus prefetch at PC with D0 status.
+     * zstate==3 in GPGX == bus requested and Z80 not in reset. */
+    unsigned int pc = m68k_get_reg(M68K_REG_PC);
+    unsigned int data = m68k_read_disassembler_8(pc);
 
-    z80_log(__FUNCTION__,"RUNNING = %d ", bus_ack ? 0 : 1);
-    return bus_ack == 1 ? 0 : 1;
+    if (bus_ack == 1 && reset == 0)
+      data &= 0xFEu;
+    else
+      data |= 0x01u;
+
+    z80_log(__FUNCTION__, "RUNNING = %d ", data);
+    return data;
 
   } else if (address == 0x1101) {
     return 0x00;
@@ -182,7 +216,7 @@ unsigned int z80_read_ctrl(unsigned int address) {
 
 void z80_irq_line(unsigned int value)
 {
-    if (reset_once == 0) return;
+    if (reset) return;
 
     if (value)
         cpu.IRequest = INT_IRQ;
@@ -227,13 +261,22 @@ static inline void zbankreg_mem_w8(unsigned int value) {
   return;
 }
 
+/* Exported wrapper — called from gwenesis_bus.c 0xA06000 write handler */
+void z80_bank_register_write(unsigned int value)
+{
+  zbankreg_mem_w8(value);
+}
+
 static inline unsigned int zbank_mem_r8(unsigned int address)
 {
     address &= 0x7FFF;
     address |= (Z80_BANK << 15);
 
     z80_log(__FUNCTION__,"Z80 bank read: %06x", address);
-    return m68k_read_memory_8(address);
+    cpu_memory_map *m = &m68k.memory_map[(address >> 16) & 0xFF];
+    if (m->read8) return (*m->read8)(address & 0xFFFFFF);
+    if (m->base)  return READ_BYTE(m->base, address & 0xFFFF);
+    return 0xFF;
 }
 
 static inline void zbank_mem_w8(unsigned int address, unsigned int value) {
@@ -241,8 +284,9 @@ static inline void zbank_mem_w8(unsigned int address, unsigned int value) {
   address |= (Z80_BANK << 15);
 
   z80_log(__FUNCTION__,"Z80 bank write %06x: %02x", address, value);
-  m68k_write_memory_8(address, value);
-
+  cpu_memory_map *m = &m68k.memory_map[(address >> 16) & 0xFF];
+  if (m->write8) (*m->write8)(address & 0xFFFFFF, value);
+  else if (m->base) WRITE_BYTE(m->base, address & 0xFFFF, value);
 }
 
 // TODO ??
@@ -268,61 +312,75 @@ word LoopZ80(register Z80 *R)
 }
 
 byte RdZ80(register word Addr) {
+  switch((Addr >> 13) & 7)
+  {
+    case 0: /* $0000-$3FFF: Z80 RAM (8K mirrored) */
+    case 1:
+    {
+      return Z80_RAM_BASE[Addr & 0x1FFF];
+    }
 
-  if (Addr < 0x4000)
-    return Z80_RAM[Addr & 0x1FFF];
+    case 2: /* $4000-$5FFF: YM2612 */
+    {
+      return YM2612Read(zclk + current_timeslice - (cpu.ICount * Z80_FREQ_DIVISOR));
+    }
 
-  if (Addr < 0x6000)
-    return YM2612Read(zclk + current_timeslice - (cpu.ICount * Z80_FREQ_DIVISOR));
+    case 3: /* $6000-$7FFF: bank register / PSG (write-only), open bus on read */
+    {
+      // $6000-$60FF: Bank register which is write-only
+      // $7F00-$7FFF: VDP which should be accessible but
+      //              no game is accessing VDP from Z80 side
+      return 0xFF;
+    }
 
-  z80_log(__FUNCTION__, "addr= %x", Addr);
-
-  if (Addr >= 0x8000)
-    return zbank_mem_r8(Addr);
-
-  z80_log(__FUNCTION__, "addr= %x", Addr);
-
-  return 0xFF;
+    default: /* $8000-$FFFF: 68k bank (32K) */
+    {
+      return zbank_mem_r8(Addr);
+    }
+  }
 }
 
 extern int system_clock;
 
 void WrZ80(register word Addr, register byte Value) {
+  switch((Addr >> 13) & 7)
+  {
+    case 0: /* $0000-$3FFF: Z80 RAM (8K mirrored) */
+    case 1:
+      Z80_RAM_BASE[Addr&0x1FFF] = Value;
+      break;
+    case 2: /* $4000-$5FFF: YM2612 */
+      z80_log("Z80","ZZYM(%x,%x) zk=%d,tgt=%d",Addr&0x3,Value, zclk, zclk + current_timeslice -(cpu.ICount * Z80_FREQ_DIVISOR) );
+      YM2612Write(Addr&0x3, Value, zclk + current_timeslice -(cpu.ICount * Z80_FREQ_DIVISOR) );
+      break;
+    case 3: /* Bank register and VDP */
+      switch(Addr >> 8)
+      {
+        case 0x60: /* $6000-$60FF: Bank register */
+        {
+          zbankreg_mem_w8(Value);
+          return;
+        }
 
-  // ZRAM & mirror
-  if (Addr < 0x4000) {
-    Z80_RAM[Addr&0x1FFF] = Value;
-    return;
+        case 0x7F: /* $7F00-$7FFF: VDP */
+        {
+          z80_log("Z80","ZZSN zk=%d,tgt=%d", zclk, zclk + current_timeslice -(cpu.ICount * Z80_FREQ_DIVISOR) );
+          gwenesis_SN76489_Write(Value,zclk + current_timeslice -(cpu.ICount * Z80_FREQ_DIVISOR) );
+          return;
+        }
+
+        default:
+        {
+          return;
+        }
+      }
+      break;
+    default: /* $8000-$FFFF: 68k bank (32K) */
+    {
+      zbank_mem_w8(Addr, Value);
+      return;
+    }
   }
-
-  // @4000-4003
-  if (Addr < 0x6000) {
-    z80_log("Z80","ZZYM(%x,%x) zk=%d,tgt=%d",Addr&0x3,Value, zclk, zclk + current_timeslice -(cpu.ICount * Z80_FREQ_DIVISOR) );
-    YM2612Write(Addr&0x3, Value, zclk + current_timeslice -(cpu.ICount * Z80_FREQ_DIVISOR) );
-    return;
-  }
-
-  // @6000
-  if (Addr == 0x6000) {
-    zbankreg_mem_w8(Value);
-    return;
-  }
-
-  // @7F11
-  if (Addr ==  0x7F11) {
-    z80_log("Z80","ZZSN zk=%d,tgt=%d", zclk, zclk + current_timeslice -(cpu.ICount * Z80_FREQ_DIVISOR) );
-    gwenesis_SN76489_Write(Value,zclk + current_timeslice -(cpu.ICount * Z80_FREQ_DIVISOR) );
-    return;
-  }
- 
-  z80_log("Z80","WrZ80  %x %x", Addr, Value);
-
-  if (Addr >= 0x8000) {
-    zbank_mem_w8(Addr, Value);
-    return;
-  }
-  z80_log("Z80","WrZ80  %x %x", Addr, Value);
-
 }
 
 
@@ -331,29 +389,29 @@ void OutZ80(register word Port, register byte Value) {;}
 void PatchZ80(register Z80 *R) {;}
 void DebugZ80(register Z80 *R) {;}
 
-void gwenesis_z80inst_save_state() {
-    SaveState* state;
-    state = saveGwenesisStateOpenForWrite("z80inst");
-    saveGwenesisStateSetBuffer(state, "cpu", &cpu, sizeof(Z80));
-    saveGwenesisStateSet(state, "bus_ack", bus_ack);
-    saveGwenesisStateSet(state, "reset", reset);
-    saveGwenesisStateSet(state, "reset_once", reset_once);
-    saveGwenesisStateSet(state, "zclk", zclk);
-    saveGwenesisStateSet(state, "initialized", initialized);
-    saveGwenesisStateSet(state, "Z80_BANK", Z80_BANK);
-    saveGwenesisStateSet(state, "current_timeslice",current_timeslice);
+void gwenesis_z80inst_save_state(FILE *file) {
+    fwrite((unsigned char *)&cpu, sizeof(Z80), 1, file);
+
+    fwrite((unsigned char *)&bus_ack, 4, 1, file);
+    fwrite((unsigned char *)&reset, 4, 1, file);
+    fwrite((unsigned char *)&zclk, 4, 1, file);
+    fwrite((unsigned char *)&initialized, 4, 1, file);
+    fwrite((unsigned char *)&Z80_BANK, 4, 1, file);
+    fwrite((unsigned char *)&current_timeslice, 4, 1, file);
 }
 
-void gwenesis_z80inst_load_state() {
-    SaveState* state = saveGwenesisStateOpenForRead("z80inst");
-    saveGwenesisStateGetBuffer(state, "cpu", &cpu, sizeof(Z80));
-    bus_ack = saveGwenesisStateGet(state, "bus_ack");
-    reset = saveGwenesisStateGet(state, "reset");
-    reset_once = saveGwenesisStateGet(state, "reset_once");
-    zclk = saveGwenesisStateGet(state, "zclk");
-    initialized = saveGwenesisStateGet(state, "initialized");
-    Z80_BANK = saveGwenesisStateGet(state, "Z80_BANK");
-    current_timeslice = saveGwenesisStateGet(state, "current_timeslice");
+void gwenesis_z80inst_load_state(FILE *file, int ss_version) {
+    fread((unsigned char *)&cpu, sizeof(Z80), 1, file);
 
+    fread((unsigned char *)&bus_ack, 4, 1, file);
+    fread((unsigned char *)&reset, 4, 1, file);
+    if (ss_version == 0) {
+      uint32_t dummy = 0;
+      fread((unsigned char *)&dummy, 4, 1, file); // For compatibility with old savestates
+    }
+    fread((unsigned char *)&zclk, 4, 1, file);
+    fread((unsigned char *)&initialized, 4, 1, file);
+    fread((unsigned char *)&Z80_BANK, 4, 1, file);
+    Z80_BANK &= 0x1FF;
+    fread((unsigned char *)&current_timeslice, 4, 1, file);
 }
-#endif

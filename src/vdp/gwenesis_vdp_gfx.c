@@ -16,10 +16,9 @@ __contact__ = "https://github.com/bzhxx"
 __license__ = "GPLv3"
 
 */
-#include "build/config.h"
-#ifdef ENABLE_EMULATOR_MD
 
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 #include <stdbool.h>
 #include "m68k.h"
@@ -30,24 +29,14 @@ __license__ = "GPLv3"
 
 //#include <assert.h>
 
-#if GNW_TARGET_MARIO !=0 || GNW_TARGET_ZELDA!=0
+#ifdef TARGET_GNW
   #pragma GCC optimize("Ofast")
 #endif
 
-#if GNW_TARGET_MARIO != 0 | GNW_TARGET_ZELDA != 0
-
-typedef unsigned char uint8_t;
-typedef unsigned short uint16_t;
-#include "stm32h7b0xx.h"
-extern unsigned char* VRAM;
-
+#ifdef TARGET_GNW
+extern unsigned char *VRAM;
 #else
-
-typedef unsigned char uint8_t;
-typedef unsigned short uint16_t;
-typedef unsigned int uint32_t;
 extern unsigned char VRAM[];
-
 #endif
 
 extern unsigned short CRAM[];            // CRAM - Palettes
@@ -94,6 +83,13 @@ static int PlanA_lastcol;
 
 static int Window_firstcol;
 static int Window_lastcol;
+
+/* Scroll state latched at scanline start (before H-INT/CPU).  VRAM/VSRAM
+ * updates during the line apply to the next line (GPGX / hardware). */
+static uint16_t latched_scroll_a;
+static uint16_t latched_scroll_b;
+static uint16_t latched_vsram[VSRAM_MAX_SIZE];
+static int latched_scroll_line = -1;
 
 // 16 bits access to VRAM
 #define FETCH16VRAM(A)  ( (VRAM[(A)+1]) | (VRAM[(A)] << 8) )
@@ -159,19 +155,46 @@ void gwenesis_vdp_set_buffer(unsigned short *ptr_screen_buffer)
  #define PIX7(P) ( ((P) & 0x0F000000 ) >>  24 )
 
 static inline __attribute__((always_inline))
+void sprite_plot_hipri(uint8_t *dst, uint8_t pix, uint8_t attrs)
+{
+  if (!pix)
+    return;
+  if ((*dst & PIXATTR_SPRITE) != 0) {
+    sprite_collision = true;
+    return;
+  }
+  *dst = attrs | pix;
+}
+
+static inline __attribute__((always_inline))
+void sprite_plot_lopri(uint8_t *dst, uint8_t pix, uint8_t attrs)
+{
+  if (!pix)
+    return;
+  if ((*dst & PIXATTR_SPRITE) != 0) {
+    sprite_collision = true;
+    if ((*dst & PIXATTR_SPRITE_HIPRI) != 0)
+      return;
+  }
+  /* Low priority sprites are drawn behind high priority plane pixels. */
+  if ((attrs & PIXATTR_HIPRI) == 0 && (*dst & PIXATTR_HIPRI) != 0)
+    return;
+  *dst = attrs | pix;
+}
+
+static inline __attribute__((always_inline))
 void draw_pattern_nofliph_sprite(uint8_t *scr, uint32_t p, uint8_t attrs)
 {
   if (p == 0) return;
 
-  /*  not transparent pixel to write AND not already a sprite*/
-  if (((PIX0(p))) && ((scr[0] & PIXATTR_SPRITE) == 0)) scr[0] = attrs | (PIX0(p));
-  if (((PIX1(p))) && ((scr[1] & PIXATTR_SPRITE) == 0)) scr[1] = attrs | (PIX1(p));
-  if (((PIX2(p))) && ((scr[2] & PIXATTR_SPRITE) == 0)) scr[2] = attrs | (PIX2(p));
-  if (((PIX3(p))) && ((scr[3] & PIXATTR_SPRITE) == 0)) scr[3] = attrs | (PIX3(p));
-  if (((PIX4(p))) && ((scr[4] & PIXATTR_SPRITE) == 0)) scr[4] = attrs | (PIX4(p));
-  if (((PIX5(p))) && ((scr[5] & PIXATTR_SPRITE) == 0)) scr[5] = attrs | (PIX5(p));
-  if (((PIX6(p))) && ((scr[6] & PIXATTR_SPRITE) == 0)) scr[6] = attrs | (PIX6(p));
-  if (((PIX7(p))) && ((scr[7] & PIXATTR_SPRITE) == 0)) scr[7] = attrs | (PIX7(p));
+  sprite_plot_hipri(&scr[0], PIX0(p), attrs);
+  sprite_plot_hipri(&scr[1], PIX1(p), attrs);
+  sprite_plot_hipri(&scr[2], PIX2(p), attrs);
+  sprite_plot_hipri(&scr[3], PIX3(p), attrs);
+  sprite_plot_hipri(&scr[4], PIX4(p), attrs);
+  sprite_plot_hipri(&scr[5], PIX5(p), attrs);
+  sprite_plot_hipri(&scr[6], PIX6(p), attrs);
+  sprite_plot_hipri(&scr[7], PIX7(p), attrs);
 }
 
 static inline __attribute__((always_inline))
@@ -179,16 +202,14 @@ void draw_pattern_fliph_sprite(uint8_t *scr, uint32_t p, uint8_t attrs)
 {
   if (p == 0) return;
 
-  /*  not transparent pixel to write AND not already a sprite*/
-  if (((PIX7(p))) && ((scr[0] & PIXATTR_SPRITE) == 0)) scr[0] = attrs | (PIX7(p));
-  if (((PIX6(p))) && ((scr[1] & PIXATTR_SPRITE) == 0)) scr[1] = attrs | (PIX6(p));
-  if (((PIX5(p))) && ((scr[2] & PIXATTR_SPRITE) == 0)) scr[2] = attrs | (PIX5(p));
-  if (((PIX4(p))) && ((scr[3] & PIXATTR_SPRITE) == 0)) scr[3] = attrs | (PIX4(p));
-  if (((PIX3(p))) && ((scr[4] & PIXATTR_SPRITE) == 0)) scr[4] = attrs | (PIX3(p));
-  if (((PIX2(p))) && ((scr[5] & PIXATTR_SPRITE) == 0)) scr[5] = attrs | (PIX2(p));
-  if (((PIX1(p))) && ((scr[6] & PIXATTR_SPRITE) == 0)) scr[6] = attrs | (PIX1(p));
-  if (((PIX0(p))) && ((scr[7] & PIXATTR_SPRITE) == 0)) scr[7] = attrs | (PIX0(p));
-
+  sprite_plot_hipri(&scr[0], PIX7(p), attrs);
+  sprite_plot_hipri(&scr[1], PIX6(p), attrs);
+  sprite_plot_hipri(&scr[2], PIX5(p), attrs);
+  sprite_plot_hipri(&scr[3], PIX4(p), attrs);
+  sprite_plot_hipri(&scr[4], PIX3(p), attrs);
+  sprite_plot_hipri(&scr[5], PIX2(p), attrs);
+  sprite_plot_hipri(&scr[6], PIX1(p), attrs);
+  sprite_plot_hipri(&scr[7], PIX0(p), attrs);
 }
 
 static inline __attribute__((always_inline))
@@ -196,33 +217,24 @@ void draw_pattern_nofliph_sprite_over_planes(uint8_t *scr, uint32_t p, uint8_t a
 {
   if (p == 0) return; 
 
-  /* High priority */
   if (attrs & PIXATTR_HIPRI) {
-
-  /*  not transparent pixel to write AND not already a sprite*/
-  if (((PIX0(p))) && ((scr[0] & PIXATTR_SPRITE) == 0)) scr[0] = attrs | (PIX0(p));
-  if (((PIX1(p))) && ((scr[1] & PIXATTR_SPRITE) == 0)) scr[1] = attrs | (PIX1(p));
-  if (((PIX2(p))) && ((scr[2] & PIXATTR_SPRITE) == 0)) scr[2] = attrs | (PIX2(p));
-  if (((PIX3(p))) && ((scr[3] & PIXATTR_SPRITE) == 0)) scr[3] = attrs | (PIX3(p));
-  if (((PIX4(p))) && ((scr[4] & PIXATTR_SPRITE) == 0)) scr[4] = attrs | (PIX4(p));
-  if (((PIX5(p))) && ((scr[5] & PIXATTR_SPRITE) == 0)) scr[5] = attrs | (PIX5(p));
-  if (((PIX6(p))) && ((scr[6] & PIXATTR_SPRITE) == 0)) scr[6] = attrs | (PIX6(p));
-  if (((PIX7(p))) && ((scr[7] & PIXATTR_SPRITE) == 0)) scr[7] = attrs | (PIX7(p));
-
-  }
-  /* Low priority */
-  else {
-
-  /*  not transparent pixel to write AND not already a sprite or higher priority*/
-  if (((PIX0(p))) && ((scr[0] & PIXATTR_SPRITE_HIPRI) == 0)) scr[0] = attrs | (PIX0(p));
-  if (((PIX1(p))) && ((scr[1] & PIXATTR_SPRITE_HIPRI) == 0)) scr[1] = attrs | (PIX1(p));
-  if (((PIX2(p))) && ((scr[2] & PIXATTR_SPRITE_HIPRI) == 0)) scr[2] = attrs | (PIX2(p));
-  if (((PIX3(p))) && ((scr[3] & PIXATTR_SPRITE_HIPRI) == 0)) scr[3] = attrs | (PIX3(p));
-  if (((PIX4(p))) && ((scr[4] & PIXATTR_SPRITE_HIPRI) == 0)) scr[4] = attrs | (PIX4(p));
-  if (((PIX5(p))) && ((scr[5] & PIXATTR_SPRITE_HIPRI) == 0)) scr[5] = attrs | (PIX5(p));
-  if (((PIX6(p))) && ((scr[6] & PIXATTR_SPRITE_HIPRI) == 0)) scr[6] = attrs | (PIX6(p));
-  if (((PIX7(p))) && ((scr[7] & PIXATTR_SPRITE_HIPRI) == 0)) scr[7] = attrs | (PIX7(p));
-  
+    sprite_plot_hipri(&scr[0], PIX0(p), attrs);
+    sprite_plot_hipri(&scr[1], PIX1(p), attrs);
+    sprite_plot_hipri(&scr[2], PIX2(p), attrs);
+    sprite_plot_hipri(&scr[3], PIX3(p), attrs);
+    sprite_plot_hipri(&scr[4], PIX4(p), attrs);
+    sprite_plot_hipri(&scr[5], PIX5(p), attrs);
+    sprite_plot_hipri(&scr[6], PIX6(p), attrs);
+    sprite_plot_hipri(&scr[7], PIX7(p), attrs);
+  } else {
+    sprite_plot_lopri(&scr[0], PIX0(p), attrs);
+    sprite_plot_lopri(&scr[1], PIX1(p), attrs);
+    sprite_plot_lopri(&scr[2], PIX2(p), attrs);
+    sprite_plot_lopri(&scr[3], PIX3(p), attrs);
+    sprite_plot_lopri(&scr[4], PIX4(p), attrs);
+    sprite_plot_lopri(&scr[5], PIX5(p), attrs);
+    sprite_plot_lopri(&scr[6], PIX6(p), attrs);
+    sprite_plot_lopri(&scr[7], PIX7(p), attrs);
   }
 }
 
@@ -231,35 +243,25 @@ void draw_pattern_fliph_sprite_over_planes(uint8_t *scr, uint32_t p, uint8_t att
 {
   if (p == 0) return;
 
-  /* High priority */
   if (attrs & PIXATTR_HIPRI) {
-
-  /*  not transparent pixel to write AND not already a sprite*/
-  if (((PIX7(p))) && ((scr[0] & PIXATTR_SPRITE) == 0)) scr[0] = attrs | (PIX7(p));
-  if (((PIX6(p))) && ((scr[1] & PIXATTR_SPRITE) == 0)) scr[1] = attrs | (PIX6(p));
-  if (((PIX5(p))) && ((scr[2] & PIXATTR_SPRITE) == 0)) scr[2] = attrs | (PIX5(p));
-  if (((PIX4(p))) && ((scr[3] & PIXATTR_SPRITE) == 0)) scr[3] = attrs | (PIX4(p));
-  if (((PIX3(p))) && ((scr[4] & PIXATTR_SPRITE) == 0)) scr[4] = attrs | (PIX3(p));
-  if (((PIX2(p))) && ((scr[5] & PIXATTR_SPRITE) == 0)) scr[5] = attrs | (PIX2(p));
-  if (((PIX1(p))) && ((scr[6] & PIXATTR_SPRITE) == 0)) scr[6] = attrs | (PIX1(p));
-  if (((PIX0(p))) && ((scr[7] & PIXATTR_SPRITE) == 0)) scr[7] = attrs | (PIX0(p));
-
+    sprite_plot_hipri(&scr[0], PIX7(p), attrs);
+    sprite_plot_hipri(&scr[1], PIX6(p), attrs);
+    sprite_plot_hipri(&scr[2], PIX5(p), attrs);
+    sprite_plot_hipri(&scr[3], PIX4(p), attrs);
+    sprite_plot_hipri(&scr[4], PIX3(p), attrs);
+    sprite_plot_hipri(&scr[5], PIX2(p), attrs);
+    sprite_plot_hipri(&scr[6], PIX1(p), attrs);
+    sprite_plot_hipri(&scr[7], PIX0(p), attrs);
+  } else {
+    sprite_plot_lopri(&scr[0], PIX7(p), attrs);
+    sprite_plot_lopri(&scr[1], PIX6(p), attrs);
+    sprite_plot_lopri(&scr[2], PIX5(p), attrs);
+    sprite_plot_lopri(&scr[3], PIX4(p), attrs);
+    sprite_plot_lopri(&scr[4], PIX3(p), attrs);
+    sprite_plot_lopri(&scr[5], PIX2(p), attrs);
+    sprite_plot_lopri(&scr[6], PIX1(p), attrs);
+    sprite_plot_lopri(&scr[7], PIX0(p), attrs);
   }
-  /* Low priority */
-  else {
-
-  /*  not transparent pixel to write AND not already a sprite or higher priority*/
-  if (((PIX7(p))) && ((scr[0] & PIXATTR_SPRITE_HIPRI) == 0)) scr[0] = attrs | (PIX7(p));
-  if (((PIX6(p))) && ((scr[1] & PIXATTR_SPRITE_HIPRI) == 0)) scr[1] = attrs | (PIX6(p));
-  if (((PIX5(p))) && ((scr[2] & PIXATTR_SPRITE_HIPRI) == 0)) scr[2] = attrs | (PIX5(p));
-  if (((PIX4(p))) && ((scr[3] & PIXATTR_SPRITE_HIPRI) == 0)) scr[3] = attrs | (PIX4(p));
-  if (((PIX3(p))) && ((scr[4] & PIXATTR_SPRITE_HIPRI) == 0)) scr[4] = attrs | (PIX3(p));
-  if (((PIX2(p))) && ((scr[5] & PIXATTR_SPRITE_HIPRI) == 0)) scr[5] = attrs | (PIX2(p));
-  if (((PIX1(p))) && ((scr[6] & PIXATTR_SPRITE_HIPRI) == 0)) scr[6] = attrs | (PIX1(p));
-  if (((PIX0(p))) && ((scr[7] & PIXATTR_SPRITE_HIPRI) == 0)) scr[7] = attrs | (PIX0(p));
-  
-  }
-
 }
 
 /******************************************************************************
@@ -533,6 +535,23 @@ void draw_pattern_planeA(uint8_t *scr, uint16_t name, int paty) {
 static  uint16_t ntwidth_x2;
 static  uint16_t ntw_mask, nth_mask;
 
+static inline __attribute__((always_inline))
+void update_playfield_size(void)
+{
+  int ntwidth = BITS(gwenesis_vdp_regs[16], 0, 2);
+  int ntheight = BITS(gwenesis_vdp_regs[16], 4, 2);
+  ntwidth = (ntwidth + 1) * 32;
+  ntheight = (ntheight + 1) * 32;
+  ntw_mask = (uint16_t)(ntwidth - 1);
+  nth_mask = (uint16_t)(ntheight - 1);
+  ntwidth_x2 = (uint16_t)(ntwidth * 2);
+
+  if (mode_h40)
+    base_w = ((REG3_NAMETABLE_W & 0x1e) << 11);
+  else
+    base_w = ((REG3_NAMETABLE_W & 0x1f) << 11);
+}
+
 /******************************************************************************
  *
  *  Return the Horizontal scrolling
@@ -565,6 +584,16 @@ unsigned int get_hscroll_vram(int line)
 
     return table + idx*4;
 }
+
+void gwenesis_vdp_latch_line_scroll(int line)
+{
+  unsigned int base = get_hscroll_vram(line);
+  latched_scroll_a = (uint16_t)(FETCH16VRAM(base + 0) & 0x3FF);
+  latched_scroll_b = (uint16_t)(FETCH16VRAM(base + 2) & 0x3FF);
+  memcpy(latched_vsram, VSRAM, sizeof(latched_vsram));
+  latched_scroll_line = line;
+}
+
 /******************************************************************************
  *
  *  Render PLANE B on screen line
@@ -577,8 +606,11 @@ void draw_line_b(int line)
   uint8_t *scr  = &render_buffer[PIX_OVERFLOW];
 
   unsigned int ntaddr = REG4_NAMETABLE_B;
-  uint16_t scrollx=FETCH16VRAM(get_hscroll_vram(line) + 2) & 0x3FF;
-  uint16_t *vsram = &VSRAM[1];
+  uint16_t scrollx = (latched_scroll_line == line)
+                         ? latched_scroll_b
+                         : (uint16_t)(FETCH16VRAM(get_hscroll_vram(line) + 2) &
+                                      0x3FF);
+  uint16_t *vsram = (latched_scroll_line == line) ? &latched_vsram[1] : &VSRAM[1];
   uint8_t *end = scr + screen_width;
 
   //bool column_scrolling = BIT(gwenesis_vdp_regs[11], 2);
@@ -623,8 +655,11 @@ void draw_line_aw(int line) {
   uint8_t *scr  = &render_buffer[PIX_OVERFLOW];
 
   unsigned int ntaddr = REG2_NAMETABLE_A;
-  uint16_t scrollx=FETCH16VRAM(get_hscroll_vram(line) + 0) & 0x3FF;
-  uint16_t *vsram = &VSRAM[0];
+  uint16_t scrollx = (latched_scroll_line == line)
+                         ? latched_scroll_a
+                         : (uint16_t)(FETCH16VRAM(get_hscroll_vram(line) + 0) &
+                                      0x3FF);
+  uint16_t *vsram = (latched_scroll_line == line) ? &latched_vsram[0] : &VSRAM[0];
 
   // Check if we are in the window region only
   // if it's the case, we cancel the plane A drawing
@@ -638,7 +673,8 @@ void draw_line_aw(int line) {
   int Window_first = Window_firstcol;
 
   if (window_down) {
-    if (line > Window_line) {
+    /* GPGX: window occupies line >= boundary when DOWN=1. */
+    if (line >= Window_line) {
       PlanA_first = PlanA_last = 0;
       Window_last = screen_width;
       Window_first = 0;
@@ -660,10 +696,13 @@ void draw_line_aw(int line) {
   const unsigned int column_scrolling = gwenesis_vdp_regs[11] & 0x4;
 
   // Invert horizontal scrolling (because it goes right, but we need to offset
-  // of the first screen pixel)
+  // of the first screen pixel).
+  // When the Window plane occupies the left side (PlanA_first > 0), adjust the
+  // starting column to match screen position PlanA_first, not position 0.
   scrollx = -scrollx;
-  uint8_t col = (scrollx >> 3) & ntw_mask;
-  uint8_t patx = scrollx & 7;
+  uint16_t adjusted_scrollx_a = (uint16_t)(scrollx + PlanA_first);
+  uint8_t col = (adjusted_scrollx_a >> 3) & ntw_mask;
+  uint8_t patx = adjusted_scrollx_a & 7;
 
   unsigned int numcell = 0;
   pos -= patx;
@@ -696,11 +735,12 @@ void draw_line_aw(int line) {
   int wdwidth_x2 = (screen_width == 320 ? 128 : 64);
 
   unsigned int nt = base_w + row * wdwidth_x2 + Window_first / 4;
+  uint8_t *wpos = scr + Window_first;
 
   for (int i = Window_first / 8; i < Window_last / 8; ++i) {
-    draw_pattern_planeA(end, FETCH16VRAM(nt), paty);
+    draw_pattern_planeA(wpos, FETCH16VRAM(nt), paty);
     nt += 2;
-    end += 8;
+    wpos += 8;
   }
 }
 
@@ -929,24 +969,9 @@ void draw_sprites(int line)
 void gwenesis_vdp_render_config()
 {
     mode_h40 = REG12_MODE_H40;
-    mode_pal = REG1_PAL;
-
-    int ntwidth = BITS(gwenesis_vdp_regs[16], 0, 2);
-    int ntheight = BITS(gwenesis_vdp_regs[16], 4, 2);
-    ntwidth = (ntwidth + 1) * 32;
-    ntheight = (ntheight + 1) * 32;
-    ntw_mask = ntwidth - 1;
-    nth_mask = ntheight - 1;
-    ntwidth_x2= ntwidth *2;
+    update_playfield_size();
 
     // Window & A planes separation
-
-    if (mode_h40)
-        base_w = ((REG3_NAMETABLE_W & 0x1e) << 11);
-    else
-        base_w = ((REG3_NAMETABLE_W & 0x1f) << 11);
-
-
     bool window_right = BIT(gwenesis_vdp_regs[17], 7);
 
     // int window_is_bugged = 0;
@@ -1015,6 +1040,7 @@ blit_4to5_line(uint16_t *in, uint16_t *out) {
 void gwenesis_vdp_render_line(int line)
 {
   mode_h40 = REG12_MODE_H40;
+  update_playfield_size();
   //mode_pal = REG1_PAL;
 
   vdpg_log(__FUNCTION__,": %3d",line);
@@ -1030,7 +1056,7 @@ void gwenesis_vdp_render_line(int line)
     return;
 
 
-#if GNW_TARGET_MARIO != 0 | GNW_TARGET_ZELDA != 0
+    #ifdef TARGET_GNW
   
   screen_buffer_line = &screen_buffer[line * SCREEN_WIDTH];
 
@@ -1086,7 +1112,7 @@ void gwenesis_vdp_render_line(int line)
   else
     draw_sprites_over_planes(line);
 
-#if GNW_TARGET_MARIO != 0 | GNW_TARGET_ZELDA != 0
+#ifdef TARGET_GNW
 
   if (screen_width == 320) {
     /* Mode Highlight/shadow is enabled */
@@ -1111,7 +1137,9 @@ void gwenesis_vdp_render_line(int line)
             break;
           }
         } else {
-          screen_buffer_line[x] = CRAM565[plane];
+          screen_buffer_line[x] = (plane & PIXATTR_HIPRI)
+                                      ? CRAM565[plane]
+                                      : (CRAM565[plane] >> 1);
         }
       }
 
@@ -1154,7 +1182,9 @@ void gwenesis_vdp_render_line(int line)
             break;
           }
         } else {
-          buffer_line_H32[x] = CRAM565[plane];
+          buffer_line_H32[x] = (plane & PIXATTR_HIPRI)
+                                   ? CRAM565[plane]
+                                   : (CRAM565[plane] >> 1);
         }
       }
 
@@ -1205,7 +1235,8 @@ void gwenesis_vdp_render_line(int line)
           break;
         }
       } else {
-        rgb565 = CRAM565[plane];
+        rgb565 = (plane & PIXATTR_HIPRI) ? CRAM565[plane]
+                                         : (CRAM565[plane] >> 1);
       }
       tmp_line[x]=rgb565;
       /*
@@ -1277,42 +1308,36 @@ void gwenesis_vdp_render_line(int line)
 #endif
 }
 
-void gwenesis_vdp_gfx_save_state() {
-  /*
-  SaveState* state;
-  state = saveGwenesisStateOpenForWrite("vdp_gfx");
-  saveGwenesisStateSetBuffer(state, "render_buffer", render_buffer, sizeof(render_buffer));
-  saveGwenesisStateSetBuffer(state, "sprite_buffer", sprite_buffer, sizeof(sprite_buffer));
-  saveGwenesisStateSet(state, "mode_h40", mode_h40);
-  saveGwenesisStateSet(state, "mode_pal", mode_pal);
-  saveGwenesisStateSet(state, "screen_width", screen_width);
-  saveGwenesisStateSet(state, "screen_height", screen_height);
-  saveGwenesisStateSet(state, "sprite_overflow", sprite_overflow);
-  saveGwenesisStateSet(state, "sprite_collision", sprite_collision);
-  saveGwenesisStateSet(state, "base_w", base_w);
-  saveGwenesisStateSet(state, "PlanA_firstcol", PlanA_firstcol);
-  saveGwenesisStateSet(state, "PlanA_lastcol", PlanA_lastcol);
-  saveGwenesisStateSet(state, "Window_firstcol", Window_firstcol);
-  saveGwenesisStateSet(state, "Window_lastcol", Window_lastcol);
-  */
+
+void gwenesis_vdp_gfx_save_state(FILE *file) {
+  fwrite((unsigned char *)render_buffer, sizeof(render_buffer), 1, file);
+  fwrite((unsigned char *)sprite_buffer, sizeof(sprite_buffer), 1, file);
+  fwrite((unsigned char *)&mode_h40, 4, 1, file);
+  fwrite((unsigned char *)&mode_pal, 4, 1, file);
+  fwrite((unsigned char *)&screen_width, 4, 1, file);
+  fwrite((unsigned char *)&screen_height, 4, 1, file);
+  fwrite((unsigned char *)&sprite_overflow, 4, 1, file);
+  fwrite((unsigned char *)&sprite_collision, 4, 1, file);
+  fwrite((unsigned char *)&base_w, 4, 1, file);
+  fwrite((unsigned char *)&PlanA_firstcol, 4, 1, file);
+  fwrite((unsigned char *)&PlanA_lastcol, 4, 1, file);
+  fwrite((unsigned char *)&Window_firstcol, 4, 1, file);
+  fwrite((unsigned char *)&Window_lastcol, 4, 1, file);
 }
 
-void gwenesis_vdp_gfx_load_state() {
-  /*
-    SaveState* state = saveGwenesisStateOpenForRead("vdp_gfx");
-    saveGwenesisStateGetBuffer(state, "render_buffer", render_buffer, sizeof(render_buffer));
-    saveGwenesisStateGetBuffer(state, "sprite_buffer", sprite_buffer, sizeof(sprite_buffer));
-    mode_h40 = saveGwenesisStateGet(state, "mode_h40");
-    mode_pal = saveGwenesisStateGet(state, "mode_pal");
-    screen_width = saveGwenesisStateGet(state, "screen_width");
-    screen_height = saveGwenesisStateGet(state, "screen_height");
-    sprite_overflow = saveGwenesisStateGet(state, "sprite_overflow");
-    sprite_collision = saveGwenesisStateGet(state, "sprite_collision");
-    base_w = saveGwenesisStateGet(state, "base_w");
-    PlanA_firstcol = saveGwenesisStateGet(state, "PlanA_firstcol");
-    PlanA_lastcol = saveGwenesisStateGet(state, "PlanA_lastcol");
-    Window_firstcol = saveGwenesisStateGet(state, "Window_firstcol");
-    Window_lastcol = saveGwenesisStateGet(state, "Window_lastcol");
-    */
+void gwenesis_vdp_gfx_load_state(FILE *file, int ss_version) {
+  (void)ss_version;
+  fread((unsigned char *)render_buffer, sizeof(render_buffer), 1, file);
+  fread((unsigned char *)sprite_buffer, sizeof(sprite_buffer), 1, file);
+  fread((unsigned char *)&mode_h40, 4, 1, file);
+  fread((unsigned char *)&mode_pal, 4, 1, file);
+  fread((unsigned char *)&screen_width, 4, 1, file);
+  fread((unsigned char *)&screen_height, 4, 1, file);
+  fread((unsigned char *)&sprite_overflow, 4, 1, file);
+  fread((unsigned char *)&sprite_collision, 4, 1, file);
+  fread((unsigned char *)&base_w, 4, 1, file);
+  fread((unsigned char *)&PlanA_firstcol, 4, 1, file);
+  fread((unsigned char *)&PlanA_lastcol, 4, 1, file);
+  fread((unsigned char *)&Window_firstcol, 4, 1, file);
+  fread((unsigned char *)&Window_lastcol, 4, 1, file);
 }
-#endif

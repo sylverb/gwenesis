@@ -16,8 +16,6 @@ __contact__ = "https://github.com/bzhxx"
 __license__ = "GPLv3"
 
 */
-#include "build/config.h"
-#ifdef ENABLE_EMULATOR_MD
 
 #include <stddef.h>
 #include <stdio.h>
@@ -226,18 +224,15 @@ void gwenesis_io_set_reg(unsigned int reg, unsigned int value) {
     return;
 }
 
-void gwenesis_io_save_state() {
-    SaveState* state;
-    state = saveGwenesisStateOpenForWrite("io");
-    saveGwenesisStateSetBuffer(state, "button_state", button_state, sizeof(button_state));
-    saveGwenesisStateSetBuffer(state, "gwenesis_io_pad_state", gwenesis_io_pad_state, sizeof(gwenesis_io_pad_state));
-    saveGwenesisStateSetBuffer(state, "io_reg", io_reg, sizeof(io_reg));
+void gwenesis_io_save_state(FILE *file) {
+    fwrite(button_state, sizeof(button_state), 1, file);
+    fwrite(gwenesis_io_pad_state, sizeof(gwenesis_io_pad_state), 1, file);
+    fwrite(io_reg, sizeof(io_reg), 1, file);
 }
 
-void gwenesis_io_load_state() {
-    SaveState* state = saveGwenesisStateOpenForRead("io");
-    saveGwenesisStateGetBuffer(state, "button_state", button_state, sizeof(button_state));
-    saveGwenesisStateGetBuffer(state, "gwenesis_io_pad_state", gwenesis_io_pad_state, sizeof(gwenesis_io_pad_state));
-    saveGwenesisStateGetBuffer(state, "io_reg", io_reg, sizeof(io_reg));
+void gwenesis_io_load_state(FILE *file, int ss_version) {
+    (void)ss_version;
+    fread(button_state, sizeof(button_state), 1, file);
+    fread(gwenesis_io_pad_state, sizeof(gwenesis_io_pad_state), 1, file);
+    fread(io_reg, sizeof(io_reg), 1, file);
 }
-#endif

@@ -19132,7 +19132,7 @@ static void m68k_op_roxr_32_s(void)
   uint* r_dst = &DY;
   uint shift = (((REG_IR >> 9) - 1) & 7) + 1;
   uint src = *r_dst;
-  uint res = MASK_OUT_ABOVE_32((ROR_33(src, shift) & ~(1 << (32 - shift))) | (XFLAG_AS_1() << (32 - shift)));
+  uint res = MASK_OUT_ABOVE_32((ROR_33(src, shift) & ~(1u << (32 - shift))) | (((uint)XFLAG_AS_1()) << (32 - shift)));
   uint new_x_flag = src & (1 << (shift - 1));
 
   if(shift != 0)

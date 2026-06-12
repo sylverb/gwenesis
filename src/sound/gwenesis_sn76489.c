@@ -22,9 +22,6 @@
     07/08/04  bzhxx few simplication for gwenesis to fit on MCU
 */
 
-#include "build/config.h"
-#ifdef ENABLE_EMULATOR_MD
-
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -59,17 +56,27 @@
 //   0                             /*  OFF  */
 // };
 
-#define PSG_MAX_VOLUME_MAX 3100
-#define PSG_MAX_VOLUME_2dB (int)(PSG_MAX_VOLUME_MAX*0.794328234)
-#define PSG_MAX_VOLUME_4dB (int)(PSG_MAX_VOLUME_MAX*0.630957344)
+/* Correct SN76489 volume table: 16 levels, -2dB per step (matches real hardware) */
+#define PSG_MAX_VOLUME 3100
 
 static const int PSGVolumeValues[16] = {
-	PSG_MAX_VOLUME_MAX   ,PSG_MAX_VOLUME_2dB   ,PSG_MAX_VOLUME_4dB,
-    PSG_MAX_VOLUME_MAX/2 ,PSG_MAX_VOLUME_2dB/2 ,PSG_MAX_VOLUME_4dB/2,
-    PSG_MAX_VOLUME_MAX/4 ,PSG_MAX_VOLUME_2dB/4 ,PSG_MAX_VOLUME_4dB/4,
-    PSG_MAX_VOLUME_MAX/8 ,PSG_MAX_VOLUME_2dB/8 ,PSG_MAX_VOLUME_4dB/8,
-    PSG_MAX_VOLUME_MAX/16,PSG_MAX_VOLUME_2dB/16,PSG_MAX_VOLUME_4dB/16,
-    0};
+  PSG_MAX_VOLUME,                          /*  0: MAX    */
+  (int)(PSG_MAX_VOLUME * 0.794328234),     /*  1: -2dB   */
+  (int)(PSG_MAX_VOLUME * 0.630957344),     /*  2: -4dB   */
+  (int)(PSG_MAX_VOLUME * 0.501187233),     /*  3: -6dB   */
+  (int)(PSG_MAX_VOLUME * 0.398107170),     /*  4: -8dB   */
+  (int)(PSG_MAX_VOLUME * 0.316227766),     /*  5: -10dB  */
+  (int)(PSG_MAX_VOLUME * 0.251188643),     /*  6: -12dB  */
+  (int)(PSG_MAX_VOLUME * 0.199526231),     /*  7: -14dB  */
+  (int)(PSG_MAX_VOLUME * 0.158489319),     /*  8: -16dB  */
+  (int)(PSG_MAX_VOLUME * 0.125892541),     /*  9: -18dB  */
+  (int)(PSG_MAX_VOLUME * 0.1),             /* 10: -20dB  */
+  (int)(PSG_MAX_VOLUME * 0.079432823),     /* 11: -22dB  */
+  (int)(PSG_MAX_VOLUME * 0.063095734),     /* 12: -24dB  */
+  (int)(PSG_MAX_VOLUME * 0.050118723),     /* 13: -26dB  */
+  (int)(PSG_MAX_VOLUME * 0.039810717),     /* 14: -28dB  */
+  0                                        /* 15: OFF    */
+};
 
 static SN76489_Context gwenesis_SN76489;
 
@@ -256,16 +263,11 @@ void gwenesis_SN76489_Write(int data, int target)
     }
 }
 
-void gwenesis_sn76489_save_state() {
-  SaveState* state;
-  state = saveGwenesisStateOpenForWrite("sn76489");
-  saveGwenesisStateSetBuffer(state, "gwenesis_SN76489", &gwenesis_SN76489, sizeof(gwenesis_SN76489));
-
+void gwenesis_sn76489_save_state(FILE *file) {
+    fwrite((unsigned char *)&gwenesis_SN76489, sizeof(gwenesis_SN76489), 1, file);
 }
 
-void gwenesis_sn76489_load_state() {
-  SaveState* state = saveGwenesisStateOpenForRead("sn76489");
-  saveGwenesisStateGetBuffer(state, "gwenesis_SN76489", &gwenesis_SN76489, sizeof(gwenesis_SN76489));
-
+void gwenesis_sn76489_load_state(FILE *file, int ss_version) {
+    (void)ss_version;
+    fread((unsigned char *)&gwenesis_SN76489, sizeof(gwenesis_SN76489), 1, file);
 }
-#endif
