@@ -370,6 +370,13 @@ static inline __attribute__((always_inline)) void gwenesis_vdp_register_w(int re
         }
 
         break;
+
+    case 17:
+        /* Window/Plane A horizontal split changes: recompute now so that
+         * mid-frame reg17 rewrites (H-INT) take effect on the following lines
+         * (e.g. ISS Deluxe HUD/pause overlay). Mirrors GPGX window_clip(). */
+        gwenesis_vdp_compute_window_split();
+        break;
     }
 }
 

@@ -134,6 +134,7 @@ void gwenesis_vdp_render_line(int line);
 void gwenesis_vdp_latch_line_scroll(int line);
 
 void gwenesis_vdp_render_config();
+void gwenesis_vdp_compute_window_split(void);
 
 unsigned int gwenesis_vdp_get_status();
 void gwenesis_vdp_get_debug_status(char *s);

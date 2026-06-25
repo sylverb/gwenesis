@@ -84,6 +84,24 @@ static int PlanA_lastcol;
 static int Window_firstcol;
 static int Window_lastcol;
 
+/* Window / Plane A split latched at scanline start (before H-INT/CPU).  Games
+ * rewrite reg17 mid-frame through H-INT; like the scroll state below, the new
+ * split must only take effect on the *next* line (GPGX renders a line before
+ * running that line's CPU), otherwise the Window band is shifted/cropped by one
+ * line. */
+static int latched_PlanA_firstcol;
+static int latched_PlanA_lastcol;
+static int latched_Window_firstcol;
+static int latched_Window_lastcol;
+/* One additional line of history: a reg17 write done by line L's H-INT must only
+ * affect rendering from line L+2 (matches Genesis Plus GX raster timing for this
+ * HUD/window split, e.g. ISS Deluxe goal banner). */
+static int prev_PlanA_firstcol;
+static int prev_PlanA_lastcol;
+static int prev_Window_firstcol;
+static int prev_Window_lastcol;
+static int latched_window_line = -1;
+
 /* Scroll state latched at scanline start (before H-INT/CPU).  VRAM/VSRAM
  * updates during the line apply to the next line (GPGX / hardware). */
 static uint16_t latched_scroll_a;
@@ -592,6 +610,20 @@ void gwenesis_vdp_latch_line_scroll(int line)
   latched_scroll_b = (uint16_t)(FETCH16VRAM(base + 2) & 0x3FF);
   memcpy(latched_vsram, VSRAM, sizeof(latched_vsram));
   latched_scroll_line = line;
+
+  /* Latch the Window/Plane A split. We keep two lines of history: the split used
+   * to render this line is the one captured two lines earlier, so a reg17 write
+   * done by line L's H-INT only takes effect from line L+2 (matches GPGX). */
+  prev_PlanA_firstcol = latched_PlanA_firstcol;
+  prev_PlanA_lastcol = latched_PlanA_lastcol;
+  prev_Window_firstcol = latched_Window_firstcol;
+  prev_Window_lastcol = latched_Window_lastcol;
+
+  latched_PlanA_firstcol = PlanA_firstcol;
+  latched_PlanA_lastcol = PlanA_lastcol;
+  latched_Window_firstcol = Window_firstcol;
+  latched_Window_lastcol = Window_lastcol;
+  latched_window_line = line;
 }
 
 /******************************************************************************
@@ -645,6 +677,45 @@ void draw_line_b(int line)
 }
 /******************************************************************************
  *
+ *  Compute Window / Plane A horizontal split from the *current* value of
+ *  register 17.  Games such as International Superstar Soccer Deluxe rewrite
+ *  reg17 mid-frame (via H-INT) to confine the Window plane to the top/bottom
+ *  HUD bands and expose Plane A in the middle of the screen.  Otherwise the
+ *  Window plane would cover the whole frame and leak stale tiles (e.g. a
+ *  pause / "ball out" overlay that is never cleared from the Window nametable).
+ *
+ *  Recomputed only when reg17 is written (see gwenesis_vdp_register_w) and once
+ *  per frame in gwenesis_vdp_render_config(), mirroring GPGX's window_clip().
+ *
+ ******************************************************************************/
+void gwenesis_vdp_compute_window_split(void)
+{
+  bool window_right = BIT(gwenesis_vdp_regs[17], 7);
+
+  PlanA_firstcol = 0;
+  PlanA_lastcol = screen_width;
+  Window_firstcol = 0;
+  Window_lastcol = 0;
+
+  if (window_right) {
+    Window_firstcol = REG17_WINDOW_HPOS * 16;
+    Window_lastcol = screen_width;
+    if (Window_firstcol > Window_lastcol)
+      Window_firstcol = Window_lastcol;
+    PlanA_firstcol = 0;
+    PlanA_lastcol = Window_firstcol;
+  } else {
+    Window_firstcol = 0;
+    Window_lastcol = REG17_WINDOW_HPOS * 16;
+    if (Window_lastcol > screen_width)
+      Window_lastcol = screen_width;
+    PlanA_firstcol = Window_lastcol;
+    PlanA_lastcol = screen_width;
+  }
+}
+
+/******************************************************************************
+ *
  *  Render PLANE A and Window on screen line
  *
  ******************************************************************************/
@@ -667,10 +738,15 @@ void draw_line_aw(int line) {
   //bool window_down = BIT(gwenesis_vdp_regs[18], 7);
   int window_down = gwenesis_vdp_regs[18] & 0x80;
 
-  int PlanA_first = PlanA_firstcol;
-  int PlanA_last = PlanA_lastcol;
-  int Window_last = Window_lastcol;
-  int Window_first = Window_firstcol;
+  /* Use the split latched two lines earlier (honours the GPGX render-before-CPU
+   * ordering plus the H-INT IRQ latency: a reg17 write by line L's H-INT only
+   * takes effect from line L+2). Fall back to the live split if this line was
+   * not latched (e.g. host-driven full-frame repaint). */
+  int use_latched = (latched_window_line == line);
+  int PlanA_first = use_latched ? prev_PlanA_firstcol : PlanA_firstcol;
+  int PlanA_last  = use_latched ? prev_PlanA_lastcol  : PlanA_lastcol;
+  int Window_last = use_latched ? prev_Window_lastcol : Window_lastcol;
+  int Window_first = use_latched ? prev_Window_firstcol : Window_firstcol;
 
   if (window_down) {
     /* GPGX: window occupies line >= boundary when DOWN=1. */
@@ -971,38 +1047,10 @@ void gwenesis_vdp_render_config()
     mode_h40 = REG12_MODE_H40;
     update_playfield_size();
 
-    // Window & A planes separation
-    bool window_right = BIT(gwenesis_vdp_regs[17], 7);
-
-    // int window_is_bugged = 0;
-    PlanA_firstcol = 0;
-    PlanA_lastcol = screen_width;
-
-    Window_firstcol = 0;
-    Window_lastcol = 0;
-
-    if (window_right) {
-
-      Window_firstcol = REG17_WINDOW_HPOS * 16;
-      Window_lastcol = screen_width;
-
-      if (Window_firstcol > Window_lastcol)
-        Window_firstcol = Window_lastcol;
-
-      PlanA_firstcol = 0;
-      PlanA_lastcol = Window_firstcol;
-
-    } else {
-      Window_firstcol = 0;
-      Window_lastcol = REG17_WINDOW_HPOS * 16;
-      if (Window_lastcol > screen_width)
-        Window_lastcol = screen_width;
-
-      PlanA_firstcol = Window_lastcol;
-      PlanA_lastcol = screen_width;
-      // if (Window_lastcol != 0)
-      //      window_is_bugged = 1;
-    }
+    /* Initial Window/Plane A split for the frame.  It is then recomputed on
+     * each reg17 write (gwenesis_vdp_register_w) so mid-frame reg17 changes
+     * done through H-INT are honoured. */
+    gwenesis_vdp_compute_window_split();
 }
 
 /******************************************************************************
