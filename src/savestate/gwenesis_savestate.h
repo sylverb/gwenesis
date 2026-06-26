@@ -33,7 +33,8 @@ __license__ = "GPLv3"
 #define GWENESIS_SAVESTATE_HEADER_PREFIX_LEN 4
 
 /** Value encoded in the last 4 digits of the header (e.g. 1 → `Gene0001`). */
-#define GWENESIS_SAVESTATE_CURRENT_VERSION 2
+/* v3: serial I2C EEPROM transient line state appended to the bus block. */
+#define GWENESIS_SAVESTATE_CURRENT_VERSION 3
 
 /** Parse layout version from the first `GWENESIS_SAVESTATE_HEADER_SIZE` bytes; 0 = unknown or `Gene0000`. */
 int gwenesis_savestate_version_from_header(const unsigned char header[GWENESIS_SAVESTATE_HEADER_SIZE]);

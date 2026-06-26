@@ -32,6 +32,7 @@ __license__ = "GPLv3"
 #include "gwenesis_sn76489.h"
 #include "gwenesis_savestate.h"
 #include "gwenesis_sram.h"
+#include "gwenesis_eeprom.h"
 
 #ifdef TARGET_GNW
 #include "gw_malloc.h"
@@ -348,6 +349,32 @@ static void gwenesis_sram_detect_from_rom(gwenesis_rom_info_t *info)
   }
 }
 
+/* Detect a serial I2C EEPROM after the parallel-SRAM header has been parsed.
+ * Mirrors Genesis Plus GX eeprom_i2c_init(): when a serial EEPROM is found we
+ * keep the battery-save path enabled (EEPROM data lives in GWENESIS_SRAM) but
+ * suppress the parallel SRAM byte window so the I2C handlers own 0x200000+. */
+static void gwenesis_eeprom_autodetect(const gwenesis_rom_info_t *info)
+{
+  unsigned int rom_first_long = ((unsigned int)ROM_HEADER_BYTE(0) << 24) |
+                                ((unsigned int)ROM_HEADER_BYTE(1) << 16) |
+                                ((unsigned int)ROM_HEADER_BYTE(2) <<  8) |
+                                 (unsigned int)ROM_HEADER_BYTE(3);
+  unsigned char header_type = ROM_HEADER_BYTE(0x1B2);
+
+  if (gwenesis_eeprom_detect(info->product, info->checksum, rom_first_long,
+                             gwenesis_sram_enabled,
+                             gwenesis_sram_start, gwenesis_sram_end,
+                             header_type)) {
+    gwenesis_sram_enabled       = 1; /* reuse .sram battery persistence */
+    gwenesis_sram_active        = 0; /* no parallel SRAM byte window     */
+    gwenesis_sram_write_protect = 0;
+    gwenesis_sram_odd_only      = 0;
+#if !BUS_DISABLE_LOGGING
+    printf("Serial I2C EEPROM detected (%u bytes)\n", (unsigned)gwenesis_eeprom_size());
+#endif
+  }
+}
+
 /******************************************************************************
  *
  *   Load a Sega Genesis Cartridge into CPU Memory
@@ -402,6 +429,7 @@ void load_cartridge()
     gwenesis_sram_write_protect = 0;
     GWENESIS_SRAM = ahb_malloc(MAX_SRAM_SIZE);
     gwenesis_sram_detect_from_rom(&info);
+    gwenesis_eeprom_autodetect(&info);
 
     /* ------ SSF2 mapper detection ------ */
     /*
@@ -481,6 +509,7 @@ void load_cartridge(unsigned char *buffer, size_t size)
     gwenesis_sram_write_protect = 0;
     GWENESIS_SRAM = ahb_malloc(MAX_SRAM_SIZE);
     gwenesis_sram_detect_from_rom(&info);
+    gwenesis_eeprom_autodetect(&info);
 
     /* ------ SSF2 mapper detection ------ */
     /*
@@ -687,6 +716,11 @@ static unsigned int mmap_rom_read16(unsigned int address)
 
 /* SSF2 and QuackShot use the same read handlers as standard ROM — .base
  * already encodes the correct physical page, no per-access tests needed. */
+
+/* Exported wrappers so the I2C EEPROM Acclaim 32M board can switch its
+ * $200000-$2FFFFF window back to cartridge ROM reads. */
+unsigned int gwenesis_bus_rom_read8(unsigned int address)  { return mmap_rom_read8(address);  }
+unsigned int gwenesis_bus_rom_read16(unsigned int address) { return mmap_rom_read16(address); }
 
 /* ---- ROM mirror / QuackShot page setup -----------------------------------
  * Sets .base for all 64 ROM pages at init. Handles:
@@ -980,13 +1014,17 @@ void gwenesis_bus_init_memory_map(void)
   /* Install cart register (0xA130xx) handler — one function pointer,   */
   /* chosen once here, zero tests in the hot path.                       */
   /* ------------------------------------------------------------------ */
-  if (gwenesis_ssf2_enabled && gwenesis_sram_enabled) {
+  /* Serial EEPROM games have gwenesis_sram_enabled set (for battery save) but
+   * must NOT install the parallel SRAM control register (0xA130F1), otherwise
+   * a write there would overlay SRAM byte handlers on the EEPROM pages. */
+  int sram_ctrl_enabled = gwenesis_sram_enabled && !gwenesis_eeprom_enabled;
+  if (gwenesis_ssf2_enabled && sram_ctrl_enabled) {
     cart_time_w8  = cart_time_w_ssf2_sram;
     cart_time_w16 = cart_time_w16_ssf2_sram;
   } else if (gwenesis_ssf2_enabled) {
     cart_time_w8  = cart_time_w_ssf2;
     cart_time_w16 = cart_time_w16_ssf2;
-  } else if (gwenesis_sram_enabled) {
+  } else if (sram_ctrl_enabled) {
     cart_time_w8  = cart_time_w_sram;
     cart_time_w16 = cart_time_w16_sram;
   } else {
@@ -1016,6 +1054,11 @@ void gwenesis_bus_init_memory_map(void)
   /* If SRAM is active, overlay the SRAM pages */
   if (gwenesis_sram_enabled && gwenesis_sram_active) {
     gwenesis_bus_sram_update_memory_map();
+  }
+
+  /* Serial I2C EEPROM board: overlay the EEPROM handlers (0x20-0x3F etc.) */
+  if (gwenesis_eeprom_enabled) {
+    gwenesis_eeprom_install_memory_map();
   }
 
   /* ------------------------------------------------------------------ */
@@ -1160,7 +1203,7 @@ static void cart_time_w16_ssf2_sram(unsigned int address, unsigned int value)
 static unsigned int mmap_a1_read8(unsigned int address)
 {
   /* 0xA130F0-0xA130F1: SRAM control register read */
-  if (gwenesis_sram_enabled
+  if (gwenesis_sram_enabled && !gwenesis_eeprom_enabled
       && (address & 0xFFFF00) == 0xA13000
       && (address & 0xFF) >= 0xF0 && (address & 0xFF) <= 0xF1)
     return gwenesis_sram_active | (gwenesis_sram_write_protect << 1);
@@ -1172,7 +1215,7 @@ static unsigned int mmap_a1_read8(unsigned int address)
 }
 static unsigned int mmap_a1_read16(unsigned int address)
 {
-  if (gwenesis_sram_enabled
+  if (gwenesis_sram_enabled && !gwenesis_eeprom_enabled
       && (address & 0xFFFF00) == 0xA13000
       && (address & 0xFF) >= 0xF0 && (address & 0xFF) <= 0xF1)
     return gwenesis_sram_active | (gwenesis_sram_write_protect << 1);
@@ -1242,6 +1285,10 @@ void gwenesis_bus_save_state(FILE *file) {
   if (gwenesis_ssf2_enabled) {
     fwrite((unsigned char *)gwenesis_ssf2_banks, sizeof(gwenesis_ssf2_banks), 1, file);
   }
+  /* Serial I2C EEPROM transient line state (savestate v3+) */
+  if (gwenesis_eeprom_enabled) {
+    gwenesis_eeprom_save_state(file);
+  }
 }
 
 void gwenesis_bus_load_state(FILE *file, int ss_version) {
@@ -1260,6 +1307,10 @@ void gwenesis_bus_load_state(FILE *file, int ss_version) {
     if (gwenesis_ssf2_enabled) {
       fread((unsigned char *)gwenesis_ssf2_banks, sizeof(gwenesis_ssf2_banks), 1, file);
     }
+  }
+  /* Serial I2C EEPROM transient line state (savestate v3+) */
+  if (ss_version >= 3 && gwenesis_eeprom_enabled) {
+    gwenesis_eeprom_load_state(file);
   }
 
   /* Resync the memory_map with restored mapper state */

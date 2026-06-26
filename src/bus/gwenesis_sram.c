@@ -24,6 +24,7 @@ __license__ = "GPLv3"
 
 #include "gwenesis_bus.h"
 #include "gwenesis_sram.h"
+#include "gwenesis_eeprom.h"
 
 static char gwenesis_sram_path[GWENESIS_SRAM_PATH_MAX];
 
@@ -33,6 +34,13 @@ static uint32_t gwenesis_sram_byte_count(void)
 {
     if (!gwenesis_sram_enabled)
         return 0;
+    /* Serial I2C EEPROM: persist exactly the chip array size. */
+    if (gwenesis_eeprom_enabled) {
+        uint32_t sz = gwenesis_eeprom_size();
+        if (sz > MAX_SRAM_SIZE)
+            sz = MAX_SRAM_SIZE;
+        return sz;
+    }
     uint32_t addr_range = (uint32_t)(gwenesis_sram_end - gwenesis_sram_start + 1);
     uint32_t sz = gwenesis_sram_odd_only ? (addr_range / 2) : addr_range;
     if (sz > MAX_SRAM_SIZE)
