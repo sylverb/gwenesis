@@ -1871,14 +1871,14 @@ static void reset_channels(FM_CH *CH , int num )
 }
 
 #ifdef TARGET_GNW
-/* Lookup tables filled once by init_tables(); live in cacheable AHB SRAM. */
+/* Lookup tables filled once by init_tables(); live in DTCM. */
 static void ym2612_alloc_tables(void)
 {
   if (tl_tab)
     return;
-  tl_tab = (signed int *)ahb_calloc(TL_TAB_LEN, sizeof(signed int));
-  lfo_pm_table = (UINT8 *)ahb_calloc(LFO_PM_TABLE_LEN, sizeof(UINT8));
-  sin_tab = (unsigned int *)ahb_calloc(SIN_LEN, sizeof(unsigned int));
+  tl_tab = (signed int *)dtc_calloc(TL_TAB_LEN, sizeof(signed int));
+  lfo_pm_table = (UINT8 *)dtc_calloc(LFO_PM_TABLE_LEN, sizeof(UINT8));
+  sin_tab = (unsigned int *)dtc_calloc(SIN_LEN, sizeof(unsigned int));
 }
 #endif
 
