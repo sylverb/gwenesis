@@ -65,9 +65,9 @@ __license__ = "GPLv3"
  * in one frame.  PAL: floor(313 * 3420 / 1008) = 1061.  Add a small margin. */
 #define GWENESIS_AUDIO_BUFFER_CAPACITY ((LINES_PER_FRAME_PAL * VDP_CYCLES_PER_LINE / AUDIO_FREQ_DIVISOR) + 16)
 
-/* 1 = printf each SSF2 bank write + OOB check vs ROM size (add -D to CFLAGS) */
+/* 1 = printf each SSF2 bank write (add -DGWENESIS_DEBUG_SSF2_MAPPER=1 to CFLAGS) */
 #ifndef GWENESIS_DEBUG_SSF2_MAPPER
-#define GWENESIS_DEBUG_SSF2_MAPPER 1
+#define GWENESIS_DEBUG_SSF2_MAPPER 0
 #endif
 
 /* Audio buffer length */

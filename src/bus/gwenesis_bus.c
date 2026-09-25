@@ -205,7 +205,9 @@ static unsigned int gwenesis_sram_effective_size(void)
 static void gwenesis_sram_enable_backup(int init_ff)
 {
   gwenesis_sram_enabled = 1;
-  gwenesis_sram_active = 1;
+  /* GPGX: only map SRAM at boot when the header range lies past the ROM image.
+   * Large SSF2 ROMs often carry an RA header pointing into banked ROM space. */
+  gwenesis_sram_active = (gwenesis_sram_start >= ROM_DATA_LENGTH) ? 1 : 0;
   if (init_ff)
     memset(GWENESIS_SRAM, 0xFF, MAX_SRAM_SIZE);
 }
@@ -568,6 +570,7 @@ void power_on() {
 void reset_emulation() {
   // Send a reset pulse to Z80 CPU
   z80_pulse_reset();
+  Z80_BANK = 0; /* system reset restores default bank window (GPGX gen_reset) */
   // Send a reset pulse to Z80 M68K
   m68k_pulse_reset();
   // Send a reset pulse to YM2612 chip
@@ -962,10 +965,15 @@ static void mmap_tmss_write16(unsigned int address, unsigned int value)
  * ========================================================================== */
 void gwenesis_bus_ssf2_update_memory_map(void)
 {
+  unsigned int max_bank = (ROM_DATA_LENGTH > 0)
+      ? (unsigned int)((ROM_DATA_LENGTH - 1) >> 19) : 0;
   /* Each logical slot covers 8 x 64 KB pages = 512 KB (0x80000 bytes).
    * gwenesis_ssf2_banks[slot] gives the physical 512 KB page to map in. */
   for (int slot = 0; slot < 8; slot++) {
-    unsigned int phys_base = (unsigned int)gwenesis_ssf2_banks[slot] << 19;
+    unsigned int bank = (unsigned int)gwenesis_ssf2_banks[slot];
+    if (bank > max_bank)
+      bank = max_bank;
+    unsigned int phys_base = bank << 19;
     for (int page = 0; page < 8; page++) {
       int idx = slot * 8 + page;  /* 0x00 .. 0x3F */
       m68k.memory_map[idx].base = (unsigned char *)ROM_DATA + phys_base + ((unsigned int)page << 16);
@@ -1062,14 +1070,24 @@ void gwenesis_bus_init_memory_map(void)
   }
 
   /* ------------------------------------------------------------------ */
-  /* 0x40-0x9F : unmapped (open bus) */
+  /* 0x40-0x9F : normally open bus; ROMs > 4 MB get a linear extension    */
+  /* (GPGX md_cart.c: maps $400000-$9FFFFF for large carts).             */
   /* ------------------------------------------------------------------ */
   for (i = 0x40; i < 0xA0; i++) {
-    m68k.memory_map[i].base    = NULL;
-    m68k.memory_map[i].read8   = mmap_openbus_read8;
-    m68k.memory_map[i].read16  = mmap_openbus_read16;
-    m68k.memory_map[i].write8  = mmap_openbus_write8;
-    m68k.memory_map[i].write16 = mmap_openbus_write16;
+    unsigned int phys = (unsigned int)i << 16;
+    if (ROM_DATA_LENGTH > 0x400000 && phys < ROM_DATA_LENGTH) {
+      m68k.memory_map[i].base    = (unsigned char *)ROM_DATA + phys;
+      m68k.memory_map[i].read8   = mmap_rom_read8;
+      m68k.memory_map[i].read16  = mmap_rom_read16;
+      m68k.memory_map[i].write8  = mmap_rom_write8;
+      m68k.memory_map[i].write16 = mmap_rom_write16;
+    } else {
+      m68k.memory_map[i].base    = NULL;
+      m68k.memory_map[i].read8   = mmap_openbus_read8;
+      m68k.memory_map[i].read16  = mmap_openbus_read16;
+      m68k.memory_map[i].write8  = mmap_openbus_write8;
+      m68k.memory_map[i].write16 = mmap_openbus_write16;
+    }
   }
 
   /* ------------------------------------------------------------------ */
@@ -1164,7 +1182,15 @@ static void cart_time_w_ssf2(unsigned int address, unsigned int value)
 {
   unsigned int slot = (address - 0xA130F0) >> 1;
   if (slot >= 1 && slot <= 7) {
-    gwenesis_ssf2_banks[slot] = value & 0x3F;
+    unsigned int max_bank = (ROM_DATA_LENGTH > 0)
+        ? (unsigned int)((ROM_DATA_LENGTH - 1) >> 19) : 0;
+    unsigned int bank = value & 0x3F;
+    if (bank > max_bank)
+      bank = max_bank;
+    gwenesis_ssf2_banks[slot] = (unsigned char)bank;
+#if GWENESIS_DEBUG_SSF2_MAPPER
+    printf("SSF2: slot %u <- bank %u (addr %06X)\n", slot, bank, address);
+#endif
     gwenesis_bus_ssf2_update_memory_map();
   }
 }
