@@ -80,11 +80,15 @@ void z80_start() {
     reset=1;
     bus_ack=0;
     zclk=0;
+    Z80_BANK = 0; /* power-on default bank $000000-$007FFF */
     memset(z80_dummy, 0xFF, sizeof(z80_dummy));
 }
 
 void z80_pulse_reset() {
-  Z80_BANK = 0;
+  /* CPU reset only.  The 68K→Z80 bank latch ($A06000) is external glue and
+   * survives /ZRESET (GPGX gen_zreset_w).  Clearing it here broke Terminator:
+   * the game bit-bangs bank=1, then resets the Z80 to load the driver — SFX
+   * then streamed from bank 0 (silence / garbage) while FM music stayed OK. */
   ResetZ80(&cpu);
 }
 static int current_timeslice = 0;
@@ -255,8 +259,8 @@ unsigned int zbankreg_mem_r8(unsigned int address)
 }
 
 static inline void zbankreg_mem_w8(unsigned int value) {
-  Z80_BANK >>= 1;
-  Z80_BANK |= (value & 1) << 8;
+  /* 9-bit shift register → bits 23..15 of the 24-bit cart address. */
+  Z80_BANK = ((Z80_BANK >> 1) | ((value & 1) << 8)) & 0x1FF;
   z80_log(__FUNCTION__,"Z80 bank points to: %06x", Z80_BANK << 15);
   return;
 }
@@ -269,24 +273,34 @@ void z80_bank_register_write(unsigned int value)
 
 static inline unsigned int zbank_mem_r8(unsigned int address)
 {
-    address &= 0x7FFF;
-    address |= (Z80_BANK << 15);
+    unsigned int addr = (address & 0x7FFFu) | ((unsigned int)Z80_BANK << 15);
+    cpu_memory_map *m = &m68k.memory_map[(addr >> 16) & 0xFF];
 
-    z80_log(__FUNCTION__,"Z80 bank read: %06x", address);
-    cpu_memory_map *m = &m68k.memory_map[(address >> 16) & 0xFF];
-    if (m->read8) return (*m->read8)(address & 0xFFFFFF);
-    if (m->base)  return READ_BYTE(m->base, address & 0xFFFF);
+    /* GPGX order when .base is valid: prefer page handlers (ROM swap, SRAM). */
+    if (m->base) {
+      if (m->read8)
+        return (*m->read8)(addr & 0xFFFFFF);
+      return READ_BYTE(m->base, addr & 0xFFFF);
+    }
+
+    /* No .base: normally open bus / I/O.  Large carts still store bytes there
+     * (UMKT PCM past $9FFFFF) — serve the ROM image before open-bus handlers. */
+    if (addr < ROM_DATA_LENGTH)
+      return READ_BYTE((const unsigned char *)ROM_DATA, addr);
+
+    if (m->read8)
+      return (*m->read8)(addr & 0xFFFFFF);
     return 0xFF;
 }
 
 static inline void zbank_mem_w8(unsigned int address, unsigned int value) {
-  address &= 0x7FFF;
-  address |= (Z80_BANK << 15);
+  unsigned int addr = (address & 0x7FFFu) | ((unsigned int)Z80_BANK << 15);
+  cpu_memory_map *m = &m68k.memory_map[(addr >> 16) & 0xFF];
 
-  z80_log(__FUNCTION__,"Z80 bank write %06x: %02x", address, value);
-  cpu_memory_map *m = &m68k.memory_map[(address >> 16) & 0xFF];
-  if (m->write8) (*m->write8)(address & 0xFFFFFF, value);
-  else if (m->base) WRITE_BYTE(m->base, address & 0xFFFF, value);
+  if (m->write8)
+    (*m->write8)(addr & 0xFFFFFF, value);
+  else if (m->base)
+    WRITE_BYTE(m->base, addr & 0xFFFF, value);
 }
 
 // TODO ??

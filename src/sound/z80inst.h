@@ -29,6 +29,7 @@ void z80_pulse_reset();
 void z80_execute(unsigned int target);
 void z80_run(int target);
 extern int zclk;
+extern int Z80_BANK; /* 9-bit latch → window base at (Z80_BANK << 15) */
 
 void gwenesis_z80inst_save_state(FILE *file);
 void gwenesis_z80inst_load_state(FILE *file, int ss_version);
